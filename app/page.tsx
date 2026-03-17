@@ -186,58 +186,79 @@ export default function Home() {
         <button onClick={reset}>Reset</button>
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th style={th}>Date</th>
-            <th style={th}>Morning</th>
-            <th style={th}>Afternoon</th>
-            <th style={th}>Total</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {entries.map((e, i) => (
-            <tr key={e.date}>
-              <td style={td}>{formatDateWithDay(e.date)}</td>
-
-              <td style={td}>
-                <input
-                  type="time"
-                  value={e.morningIn}
-                  onChange={(ev) => updateEntry(i, "morningIn", ev.target.value)}
-                />
-                {" - "}
-                <input
-                  type="time"
-                  value={e.morningOut}
-                  onChange={(ev) => updateEntry(i, "morningOut", ev.target.value)}
-                />
-                <div>{formatHoursToHM(morningHours[i])}</div>
-              </td>
-
-              <td style={td}>
-                <input
-                  type="time"
-                  value={e.afternoonIn}
-                  onChange={(ev) => updateEntry(i, "afternoonIn", ev.target.value)}
-                />
-                {" - "}
-                <input
-                  type="time"
-                  value={e.afternoonOut}
-                  onChange={(ev) => updateEntry(i, "afternoonOut", ev.target.value)}
-                />
-                <div>{formatHoursToHM(afternoonHours[i])}</div>
-              </td>
-
-              <td style={td}>
-                <strong>{formatHoursToHM(dailyTotals[i])}</strong>
-              </td>
+      <div style={{ overflowX: "auto", marginBottom: 8 }}>
+        <table style={{ borderCollapse: "collapse", minWidth: "600px" }}>
+          <thead>
+            <tr>
+              <th style={th}>Time of Day</th>
+              {entries.map((e) => (
+                <th key={e.date} style={th}>
+                  {formatDateWithDay(e.date)}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            <tr>
+              <td style={td}>Morning</td>
+              {entries.map((e, i) => (
+                <td key={e.date + "-morning"} style={td}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="time"
+                      value={e.morningIn}
+                      onChange={(ev) => updateEntry(i, "morningIn", ev.target.value)}
+                      style={{ width: 100 }}
+                    />
+                    <span>-</span>
+                    <input
+                      type="time"
+                      value={e.morningOut}
+                      onChange={(ev) => updateEntry(i, "morningOut", ev.target.value)}
+                      style={{ width: 100 }}
+                    />
+                  </div>
+                  <div style={{ marginTop: 6 }}>{formatHoursToHM(morningHours[i])}</div>
+                </td>
+              ))}
+            </tr>
+
+            <tr>
+              <td style={td}>Afternoon</td>
+              {entries.map((e, i) => (
+                <td key={e.date + "-afternoon"} style={td}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="time"
+                      value={e.afternoonIn}
+                      onChange={(ev) => updateEntry(i, "afternoonIn", ev.target.value)}
+                      style={{ width: 100 }}
+                    />
+                    <span>-</span>
+                    <input
+                      type="time"
+                      value={e.afternoonOut}
+                      onChange={(ev) => updateEntry(i, "afternoonOut", ev.target.value)}
+                      style={{ width: 100 }}
+                    />
+                  </div>
+                  <div style={{ marginTop: 6 }}>{formatHoursToHM(afternoonHours[i])}</div>
+                </td>
+              ))}
+            </tr>
+
+            <tr>
+              <td style={td}>Total</td>
+              {entries.map((e, i) => (
+                <td key={e.date + "-total"} style={td}>
+                  <strong>{formatHoursToHM(dailyTotals[i])}</strong>
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <div style={{ marginTop: 20 }}>
         <h3>Weekly Totals</h3>
