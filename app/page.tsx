@@ -383,131 +383,195 @@ export default function Home() {
   }
 
   return (
-    <div style={{ padding: 24, fontFamily: "Inter, sans-serif" }}>
-      
+    <div className="min-h-screen bg-black p-6 font-sans text-white selection:bg-slate-700">
+      <div className="mx-auto max-w-5xl space-y-8">
+        {/* Header Section */}
+        <div className="rounded-2xl border border-white/20 bg-black p-8 shadow-sm">
+          <h1 className="mb-8 text-center text-3xl font-bold tracking-tight text-white">
+            OJT Time Tracker 2026
+          </h1>
 
-      <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 28, textAlign: "center", width: "100%" }}>ON THE JOB TRAINING 2026</h1>
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+            {/* Metadata Inputs */}
+            <div className="grid gap-5 lg:col-span-2 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-300">Name</span>
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={personName}
+                  onChange={(e) => {
+                    setPersonName(e.target.value);
+                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName: e.target.value, course, school, area, requiredHours });
+                  }}
+                />
+              </label>
 
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-start", width: "100%" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, flex: 1 }}>
-            <label style={{ display: "flex", flexDirection: "column" }}>
-              Name
-              <input value={personName} onChange={(e) => { setPersonName(e.target.value); saveMapToLocalStorage(storageMapRef.current, year, month, { personName: e.target.value, course, school, area, requiredHours }); }} />
-            </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-300">School</span>
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={school}
+                  onChange={(e) => {
+                    setSchool(e.target.value);
+                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school: e.target.value, area, requiredHours });
+                  }}
+                />
+              </label>
 
-            <label style={{ display: "flex", flexDirection: "column" }}>
-              School
-              <input value={school} onChange={(e) => { setSchool(e.target.value); saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school: e.target.value, area, requiredHours }); }} />
-            </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-300">Course</span>
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={course}
+                  onChange={(e) => {
+                    setCourse(e.target.value);
+                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course: e.target.value, school, area, requiredHours });
+                  }}
+                />
+              </label>
 
-            <label style={{ display: "flex", flexDirection: "column" }}>
-              Course
-              <input value={course} onChange={(e) => { setCourse(e.target.value); saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course: e.target.value, school, area, requiredHours }); }} />
-            </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-300">Area of Assignment</span>
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={area}
+                  onChange={(e) => {
+                    setArea(e.target.value);
+                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area: e.target.value, requiredHours });
+                  }}
+                />
+              </label>
+            </div>
 
-            <label style={{ display: "flex", flexDirection: "column" }}>
-              Area of assignment
-              <input value={area} onChange={(e) => { setArea(e.target.value); saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area: e.target.value, requiredHours }); }} />
-            </label>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-end" }}>
-            <label style={{ display: "flex", flexDirection: "column", minWidth: 200 }}>
-              No of hours required 486 HRS:
-              <div style={{ fontSize: 15, color: "#ffffff", marginTop: 6 }}>
-                Overall taken: <strong>{formatMinutesToHM(overallTakenMinutes)}</strong> / {REMAIN_BASE_HOURS} hrs
-                <br />
-                Remaining (of {REMAIN_BASE_HOURS}): <strong>{formatMinutesToHM(remainFrom486Minutes)}</strong>
+            {/* Summary Card */}
+            <div className="rounded-xl border border-white/20 bg-slate-900 p-6 text-white shadow-md lg:col-span-1">
+              <h3 className="mb-4 text-lg font-semibold text-slate-300">Progress Summary</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between border-b border-slate-700 pb-2">
+                  <span className="text-slate-400">Required Hours</span>
+                  <span className="font-medium">{REMAIN_BASE_HOURS} hrs</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-700 pb-2">
+                  <span className="text-slate-400">Total Rendered</span>
+                  <span className="font-bold">{formatMinutesToHM(overallTakenMinutes)}</span>
+                </div>
+                <div className="flex justify-between pt-1">
+                  <span className="text-slate-400">Remaining</span>
+                  <span className="font-bold text-yellow-400">{formatMinutesToHM(remainFrom486Minutes)}</span>
+                </div>
                 {remainRequiredMinutes !== null && (
-                  <><br />Remaining (required): <strong>{formatMinutesToHM(remainRequiredMinutes)}</strong></>
+                  <div className="flex justify-between pt-1 text-sm text-slate-500">
+                    <span>Required Left</span>
+                    <span>{formatMinutesToHM(remainRequiredMinutes)}</span>
+                  </div>
                 )}
               </div>
-            </label>
+            </div>
           </div>
-        </div>
-        
-          <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "center", width: "100%", marginTop: 8 }}>
-          <div style={{ fontSize: 16 }}>Month:</div>
-          <select
-            value={month}
-            onChange={(e) => handleMonthChange(Number(e.target.value))}
-            style={{ backgroundColor: "#000", color: "#fff", border: "1px solid #fff", padding: "6px 8px" }}
-          >
-            {Array.from({ length: 12 }).map((_, i) => (
-              <option key={i} value={i}>
-                {new Date(0, i).toLocaleString(undefined, { month: "long" })}
-              </option>
-            ))}
-          </select>
 
-          <div style={{ marginLeft: 8, fontSize: 16 }}>
-            Total: <strong>{formatMinutesToHM(monthlyTotalMinutes)}</strong>
+          {/* Controls */}
+          <div className="mt-8 flex flex-col items-center justify-between gap-4 border-t border-white/20 pt-6 sm:flex-row">
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-slate-300">Select Month:</label>
+              <select
+                value={month}
+                onChange={(e) => handleMonthChange(Number(e.target.value))}
+                className="rounded-md border border-slate-700 bg-black py-2 pl-3 pr-8 text-sm text-white shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <option key={i} value={i}>
+                    {new Date(0, i).toLocaleString(undefined, { month: "long" })}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={year}
+                onChange={(e) => handleYearChange(Number(e.target.value))}
+                className="rounded-md border border-slate-700 bg-black py-2 pl-3 pr-8 text-sm text-white shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {Array.from({ length: 5 }).map((_, i) => {
+                  const y = 2024 + i;
+                  return <option key={y} value={y}>{y}</option>
+                })}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-4 py-2">
+              <span className="text-sm text-slate-400">Monthly Total:</span>
+              <span className="text-lg font-bold text-white">{formatMinutesToHM(monthlyTotalMinutes)}</span>
+            </div>
           </div>
         </div>
-        
+
+        {/* Data Table */}
+        <div className="overflow-hidden rounded-xl border border-white/20 bg-black shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-white/20 bg-slate-900">
+                <tr>
+                  <th className="px-6 py-4 font-semibold text-white">Date</th>
+                  <th className="px-6 py-4 text-center font-semibold text-white">Morning Shift</th>
+                  <th className="px-6 py-4 text-center font-semibold text-white">Afternoon Shift</th>
+                  <th className="px-6 py-4 text-right font-semibold text-white">Daily Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {entries.map((e, i) => (
+                  <tr key={e.date} className="transition-colors hover:bg-slate-900">
+                    <td className="whitespace-nowrap px-6 py-3 font-medium text-slate-300">
+                      {formatDateWithDay(e.date)}
+                    </td>
+
+                    <td className="px-6 py-3 text-center">
+                      <div className="inline-flex items-center gap-2 rounded-md bg-slate-800 p-1 ring-1 ring-slate-700">
+                        <input
+                          type="time"
+                          value={e.morningIn}
+                          onChange={(ev) => updateEntry(i, "morningIn", ev.target.value)}
+                          className="w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0"
+                        />
+                        <span className="text-slate-400">-</span>
+                        <input
+                          type="time"
+                          value={e.morningOut}
+                          onChange={(ev) => updateEntry(i, "morningOut", ev.target.value)}
+                          className="w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0"
+                        />
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-3 text-center">
+                      <div className="inline-flex items-center gap-2 rounded-md bg-slate-800 p-1 ring-1 ring-slate-700">
+                        <input
+                          type="time"
+                          value={e.afternoonIn}
+                          onChange={(ev) => updateEntry(i, "afternoonIn", ev.target.value)}
+                          className="w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0"
+                        />
+                        <span className="text-slate-400">-</span>
+                        <input
+                          type="time"
+                          value={e.afternoonOut}
+                          onChange={(ev) => updateEntry(i, "afternoonOut", ev.target.value)}
+                          className="w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0"
+                        />
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-3 text-right font-semibold text-blue-400">
+                      {formatMinutesToHM(dailyTotalsMinutes[i])}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th style={th}>Date</th>
-            <th style={th}>Morning</th>
-            <th style={th}>Afternoon</th>
-            <th style={th}>Total</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {entries.map((e, i) => (
-            <tr key={e.date}>
-              <td style={td}>{formatDateWithDay(e.date)}</td>
-
-              <td style={td}>
-                <input
-                  type="time"
-                  value={e.morningIn}
-                  onChange={(ev) => updateEntry(i, "morningIn", ev.target.value)}
-                />
-                {" - "}
-                <input
-                  type="time"
-                  value={e.morningOut}
-                  onChange={(ev) => updateEntry(i, "morningOut", ev.target.value)}
-                />
-              </td>
-
-              <td style={td}>
-                <input
-                  type="time"
-                  value={e.afternoonIn}
-                  onChange={(ev) => updateEntry(i, "afternoonIn", ev.target.value)}
-                />
-                {" - "}
-                <input
-                  type="time"
-                  value={e.afternoonOut}
-                  onChange={(ev) => updateEntry(i, "afternoonOut", ev.target.value)}
-                />
-              </td>
-
-              <td style={td}>
-                <strong>{formatMinutesToHM(dailyTotalsMinutes[i])}</strong>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      
     </div>
   );
 }
-
-const th: React.CSSProperties = {
-  borderBottom: "2px solid #ccc",
-  padding: 8,
-};
-
-const td: React.CSSProperties = {
-  borderBottom: "1px solid #eee",
-  padding: 8,
-};
