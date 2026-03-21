@@ -64,18 +64,43 @@ export default function Home() {
   const totalDays = daysInMonth(year, month);
 
   const [entries, setEntries] = useState<DayEntry[]>(() => {
-    const arr: DayEntry[] = [];
-    for (let d = 1; d <= totalDays; d++) {
-      arr.push({
-        date: formatDate(year, month, d),
-        morningIn: "",
-        morningOut: "",
-        afternoonIn: "",
-        afternoonOut: "",
-      });
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+
+      if (parsed?.map) {
+        const key = `${today.getFullYear()}-${String(
+          today.getMonth() + 1
+        ).padStart(2, "0")}`;
+
+        if (parsed.map[key]) {
+          return parsed.map[key];
+        }
+      }
+
+      if (Array.isArray(parsed?.entries)) {
+        return parsed.entries;
+      }
     }
-    return arr;
-  });
+  } catch {}
+
+  // fallback
+  const arr: DayEntry[] = [];
+  const dCount = daysInMonth(today.getFullYear(), today.getMonth());
+
+  for (let d = 1; d <= dCount; d++) {
+    arr.push({
+      date: formatDate(today.getFullYear(), today.getMonth(), d),
+      morningIn: "",
+      morningOut: "",
+      afternoonIn: "",
+      afternoonOut: "",
+    });
+  }
+
+  return arr;
+});
 
   const STORAGE_KEY = "dtr-calcu-v1";
 
@@ -112,7 +137,17 @@ export default function Home() {
             }
             if (typeof parsed.lastYear === "number") setYear(parsed.lastYear);
             if (typeof parsed.lastMonth === "number") setMonth(parsed.lastMonth);
-            const key = monthKey(parsed.lastYear ?? year, parsed.lastMonth ?? month);
+            const restoredYear = parsed.lastYear ?? year;
+const restoredMonth = parsed.lastMonth ?? month;
+
+setYear(restoredYear);
+setMonth(restoredMonth);
+
+const key = monthKey(restoredYear, restoredMonth);
+
+if (storageMapRef.current[key]) {
+  setEntries(storageMapRef.current[key]);
+}
             if (storageMapRef.current[key]) setEntries(storageMapRef.current[key]);
             return;
           }
@@ -232,16 +267,26 @@ export default function Home() {
 
   // Persist edits to the current month's slot whenever entries change
   useEffect(() => {
-    const key = monthKey(year, month);
-    storageMapRef.current[key] = entries;
-    saveMapToLocalStorage(storageMapRef.current, year, month, {
-      personName,
-      course,
-      school,
-      area,
-      requiredHours,
-    });
-  }, [entries, year, month]);
+  const key = monthKey(year, month);
+  storageMapRef.current[key] = entries;
+
+  saveMapToLocalStorage(storageMapRef.current, year, month, {
+    personName,
+    course,
+    school,
+    area,
+    requiredHours,
+  });
+}, [
+  entries,
+  year,
+  month,
+  personName,
+  course,
+  school,
+  area,
+  requiredHours,
+]);
 
   function updateEntry(
     index: number,
