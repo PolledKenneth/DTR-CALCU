@@ -60,7 +60,8 @@ export async function saveDTRData(
       return;
     }
 
-    // Use personName as document name, fallback to userId if no name provided
+    // Ensure metadata contains the personName and use it as document name
+    const updatedMetadata = { ...metadata, personName: personName.trim() };
     const documentName = personName.trim() || userId;
     const docRef = doc(db, DTR_COLLECTION, documentName);
     const docSnap = await getDoc(docRef);
@@ -73,7 +74,7 @@ export async function saveDTRData(
       const existingData = docSnap.data() as DTRData;
       const updatedData: DTRData = {
         ...existingData,
-        metadata: { ...existingData.metadata, ...metadata },
+        metadata: { ...existingData.metadata, ...updatedMetadata },
         months: {
           ...existingData.months,
           [monthKey]: {
@@ -91,7 +92,7 @@ export async function saveDTRData(
       // Create new document
       const newData: DTRData = {
         userId,
-        metadata,
+        metadata: updatedMetadata,
         months: {
           [monthKey]: {
             year,
