@@ -388,42 +388,30 @@ export default function Home() {
     );
   }
 
-  // Overall taken minutes across all saved months (reads localStorage snapshot)
-  // overallTakenMinutes is derived from localStorage (client-only). Initialize
-  // from `monthlyTotalMinutes` to ensure server and initial client renders match,
-  // then update on mount to read the real snapshot from localStorage.
+  // Overall taken minutes across all months (based on in-memory map).
+  // Initialize from `monthlyTotalMinutes` for SSR hydration parity.
   const [overallTakenMinutes, setOverallTakenMinutes] = useState<number>(monthlyTotalMinutes);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        setOverallTakenMinutes(monthlyTotalMinutes);
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      let total = 0;
-      if (parsed && parsed.map && typeof parsed.map === "object") {
-        for (const key of Object.keys(parsed.map)) {
-          const arr = parsed.map[key];
-          if (Array.isArray(arr)) {
-            for (const e of arr) {
-              total += entryTotalMinutes(e);
-            }
-          }
-        }
-      } else if (parsed && Array.isArray(parsed.entries)) {
-        for (const e of parsed.entries) total += entryTotalMinutes(e);
-      }
+    let total = 0;
 
-      // NOTE: intentionally do NOT include the current in-memory `entries` here
-      // — only compute the overall total from what's stored in localStorage.
-      setOverallTakenMinutes(total);
-    } catch (e) {
+    const mapSnapshot = storageMapRef.current;
+
+    if (Object.keys(mapSnapshot).length === 0) {
+      // no persisted data yet; use current month total until storage map is populated.
       setOverallTakenMinutes(monthlyTotalMinutes);
+      return;
     }
-    // run when monthly total changes so UI updates after saves
-  }, [monthlyTotalMinutes]);
+
+    for (const monthArr of Object.values(mapSnapshot)) {
+      if (!Array.isArray(monthArr)) continue;
+      for (const e of monthArr) {
+        total += entryTotalMinutes(e);
+      }
+    }
+
+    setOverallTakenMinutes(total);
+  }, [monthlyTotalMinutes, year, month, entries]);
 
   const REMAIN_BASE_HOURS = 486; // base for the /486 metric
   const remainFrom486Minutes = Math.max(0, REMAIN_BASE_HOURS * 60 - overallTakenMinutes);
