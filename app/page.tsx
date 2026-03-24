@@ -235,7 +235,21 @@ export default function Home() {
   // When switching months/years we save current entries and load saved entries for target month if present.
   function handleMonthChange(newMonth: number) {
     const curKey = monthKey(year, month);
-    storageMapRef.current[curKey] = entries.map((e) => ({ ...e }));
+    storageMapRef.current[curKey] = cloneEntries(entries);
+
+    const nextKey = monthKey(year, newMonth);
+    const candidate = Array.isArray(storageMapRef.current[nextKey]) ? storageMapRef.current[nextKey] : null;
+
+    const nextEntries =
+      candidate && isValidMonthEntries(candidate, year, newMonth)
+        ? cloneEntries(candidate)
+        : getEmptyMonthEntries(year, newMonth);
+
+    storageMapRef.current[nextKey] = cloneEntries(nextEntries);
+
+    setMonth(newMonth);
+    setEntries(nextEntries);
+
     saveMapToLocalStorage(storageMapRef.current, year, newMonth, {
       personName,
       course,
@@ -243,21 +257,25 @@ export default function Home() {
       area,
       requiredHours,
     });
-
-    setMonth(newMonth);
-    const nextKey = monthKey(year, newMonth);
-    const candidate = Array.isArray(storageMapRef.current[nextKey]) ? storageMapRef.current[nextKey] : null;
-    if (candidate && isValidMonthEntries(candidate, year, newMonth)) {
-      setEntries(cloneEntries(candidate));
-    } else {
-      const newEntries = getEmptyMonthEntries(year, newMonth);
-      setEntries(newEntries);
-    }
   }
 
   function handleYearChange(newYear: number) {
     const curKey = monthKey(year, month);
-    storageMapRef.current[curKey] = entries.map((e) => ({ ...e }));
+    storageMapRef.current[curKey] = cloneEntries(entries);
+
+    const nextKey = monthKey(newYear, month);
+    const candidate = Array.isArray(storageMapRef.current[nextKey]) ? storageMapRef.current[nextKey] : null;
+
+    const nextEntries =
+      candidate && isValidMonthEntries(candidate, newYear, month)
+        ? cloneEntries(candidate)
+        : getEmptyMonthEntries(newYear, month);
+
+    storageMapRef.current[nextKey] = cloneEntries(nextEntries);
+
+    setYear(newYear);
+    setEntries(nextEntries);
+
     saveMapToLocalStorage(storageMapRef.current, newYear, month, {
       personName,
       course,
@@ -265,15 +283,6 @@ export default function Home() {
       area,
       requiredHours,
     });
-
-    setYear(newYear);
-    const nextKey = monthKey(newYear, month);
-    const candidate = Array.isArray(storageMapRef.current[nextKey]) ? storageMapRef.current[nextKey] : null;
-    if (candidate && isValidMonthEntries(candidate, newYear, month)) {
-      setEntries(cloneEntries(candidate));
-    } else {
-      setEntries(getEmptyMonthEntries(newYear, month));
-    }
   }
 
   // Persist edits to the current month's slot whenever entries change
