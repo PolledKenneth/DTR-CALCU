@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
+import { saveDTRData, getDTRData, getAllDTRData, type DTRData } from "../lib/firebase-service";
 
 type DayEntry = {
   date: string;
@@ -89,6 +90,7 @@ export default function Home() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
+  const [userId, setUserId] = useState<string>(""); // Firebase user ID
 
   const totalDays = daysInMonth(year, month);
 
@@ -149,6 +151,20 @@ export default function Home() {
   const [school, setSchool] = useState("");
   const [area, setArea] = useState("");
   const [requiredHours, setRequiredHours] = useState<number | "">("");
+  const [firebaseStatus, setFirebaseStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Initialize userId (for demo, using a simple ID - in production use Firebase Auth)
+  useEffect(() => {
+    const storedUserId = localStorage.getItem("dtr-user-id");
+    if (storedUserId) {
+      setUserId(storedUserId);
+    } else {
+      // Generate a simple user ID for demo purposes
+      const newUserId = "user_" + Date.now().toString(36);
+      localStorage.setItem("dtr-user-id", newUserId);
+      setUserId(newUserId);
+    }
+  }, []);
 
   // Load saved map once on mount; support legacy shape too.
   useEffect(() => {
@@ -230,6 +246,53 @@ export default function Home() {
     }
   }
 
+  // Save to Firebase function
+  async function saveToFirebase(
+    year: number,
+    month: number,
+    entries: DayEntry[],
+    meta?: {
+      personName?: string;
+      course?: string;
+      school?: string;
+      area?: string;
+      requiredHours?: number | "";
+    }
+  ) {
+    if (!userId) return;
+    
+    try {
+      setFirebaseStatus('saving');
+      await saveDTRData(userId, meta?.personName || '', year, month, entries, meta || {});
+      setFirebaseStatus('saved');
+      setTimeout(() => setFirebaseStatus('idle'), 2000);
+    } catch (error) {
+      console.error("Failed to save to Firebase:", error);
+      setFirebaseStatus('error');
+      setTimeout(() => setFirebaseStatus('idle'), 3000);
+    }
+  }
+
+  // Load from Firebase function
+  async function loadFromFirebase(
+    year: number,
+    month: number
+  ): Promise<DayEntry[] | null> {
+    if (!userId) return null;
+    
+    try {
+      const data = await getDTRData(userId, personName, year, month);
+      if (data) {
+        const monthKey = `${year}-${month}`;
+        return data.months[monthKey]?.entries || null;
+      }
+      return null;
+    } catch (error) {
+      console.error("Failed to load from Firebase:", error);
+      return null;
+    }
+  }
+
   // Save current month entries into storage map and localStorage
   function saveMapToLocalStorage(
     map: Record<string, DayEntry[]>,
@@ -246,6 +309,11 @@ export default function Home() {
     try {
       const payload = { map, lastYear: lastY, lastMonth: lastM, meta } as any;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      
+      // Also save to Firebase if userId is available
+      if (userId) {
+        saveToFirebase(lastY, lastM, map[monthKey(lastY, lastM)], meta);
+      }
     } catch (e) {
       // ignore
     }
@@ -495,9 +563,9 @@ export default function Home() {
                   type="text"
                   className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={personName}
-                  onChange={(e) => {
-                    setPersonName(e.target.value);
-                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName: e.target.value, course, school, area, requiredHours });
+                  onChange={(e) => setPersonName(e.target.value)}
+                  onBlur={() => {
+                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area, requiredHours });
                   }}
                 />
               </label>
@@ -508,9 +576,9 @@ export default function Home() {
                   type="text"
                   className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={school}
-                  onChange={(e) => {
-                    setSchool(e.target.value);
-                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school: e.target.value, area, requiredHours });
+                  onChange={(e) => setSchool(e.target.value)}
+                  onBlur={() => {
+                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area, requiredHours });
                   }}
                 />
               </label>
@@ -521,9 +589,9 @@ export default function Home() {
                   type="text"
                   className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={course}
-                  onChange={(e) => {
-                    setCourse(e.target.value);
-                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course: e.target.value, school, area, requiredHours });
+                  onChange={(e) => setCourse(e.target.value)}
+                  onBlur={() => {
+                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area, requiredHours });
                   }}
                 />
               </label>
@@ -534,9 +602,9 @@ export default function Home() {
                   type="text"
                   className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={area}
-                  onChange={(e) => {
-                    setArea(e.target.value);
-                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area: e.target.value, requiredHours });
+                  onChange={(e) => setArea(e.target.value)}
+                  onBlur={() => {
+                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area, requiredHours });
                   }}
                 />
               </label>
@@ -590,7 +658,7 @@ export default function Home() {
               >
                 {Array.from({ length: 5 }).map((_, i) => {
                   const y = 2024 + i;
-                  return <option key={y} value={y}>{y}</option>
+                  return <option key={y} value={y}>{y}</option>;
                 })}
               </select>
               <button
@@ -602,9 +670,27 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-4 py-2">
-              <span className="text-sm text-slate-400">Monthly Total:</span>
-              <span className="text-lg font-bold text-white">{formatMinutesToHM(monthlyTotalMinutes)}</span>
+            <div className="flex items-center gap-4">
+              {/* Firebase Status Indicator */}
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${
+                  firebaseStatus === 'saving' ? 'bg-yellow-400 animate-pulse' :
+                  firebaseStatus === 'saved' ? 'bg-green-400' :
+                  firebaseStatus === 'error' ? 'bg-red-400' :
+                  'bg-gray-600'
+                }`} />
+                <span className="text-xs text-slate-400">
+                  {firebaseStatus === 'saving' ? 'Saving to cloud...' :
+                   firebaseStatus === 'saved' ? 'Saved to cloud' :
+                   firebaseStatus === 'error' ? 'Save failed' :
+                   'Local storage'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-4 py-2">
+                <span className="text-sm text-slate-400">Monthly Total:</span>
+                <span className="text-lg font-bold text-white">{formatMinutesToHM(monthlyTotalMinutes)}</span>
+              </div>
             </div>
           </div>
         </div>
