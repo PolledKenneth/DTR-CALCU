@@ -92,6 +92,8 @@ export default function Home() {
 
   const totalDays = daysInMonth(year, month);
 
+  const storageMapRef = useRef<Record<string, DayEntry[]>>({});
+
   const [entries, setEntries] = useState<DayEntry[]>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -101,6 +103,7 @@ export default function Home() {
         if (parsed && typeof parsed === "object") {
           // new shape
           if (parsed.map && typeof parsed.map === "object") {
+            storageMapRef.current = parsed.map;
             const initialYear = typeof parsed.lastYear === "number" ? parsed.lastYear : today.getFullYear();
             const initialMonth = typeof parsed.lastMonth === "number" ? parsed.lastMonth : today.getMonth();
             const initialKey = monthKey(initialYear, initialMonth);
@@ -126,7 +129,8 @@ export default function Home() {
             typeof parsed.month === "number" &&
             Array.isArray(parsed.entries)
           ) {
-            return parsed.entries;
+            storageMapRef.current[monthKey(parsed.year, parsed.month)] = cloneEntries(parsed.entries);
+            return cloneEntries(parsed.entries);
           }
         }
       }
@@ -137,7 +141,6 @@ export default function Home() {
     return getEmptyMonthEntries(today.getFullYear(), today.getMonth());
   });
 
-  const storageMapRef = useRef<Record<string, DayEntry[]>>({});
   const hasLoadedRef = useRef(false);
 
   // Header metadata state
@@ -214,6 +217,19 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function refreshMapFromLocalStorage() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.map && typeof parsed.map === "object") {
+        storageMapRef.current = parsed.map;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   // Save current month entries into storage map and localStorage
   function saveMapToLocalStorage(
     map: Record<string, DayEntry[]>,
@@ -237,6 +253,8 @@ export default function Home() {
 
   // When switching months/years we save current entries and load saved entries for target month if present.
   function handleMonthChange(newMonth: number) {
+    refreshMapFromLocalStorage();
+
     const curKey = monthKey(year, month);
     storageMapRef.current[curKey] = cloneEntries(entries);
 
@@ -263,6 +281,8 @@ export default function Home() {
   }
 
   function handleYearChange(newYear: number) {
+    refreshMapFromLocalStorage();
+
     const curKey = monthKey(year, month);
     storageMapRef.current[curKey] = cloneEntries(entries);
 
