@@ -548,11 +548,9 @@ export default function Home() {
         {/* Header Section */}
         <div className="rounded-2xl border border-white/20 bg-black p-8 shadow-sm">
           <h1 className="mb-8 text-center text-3xl font-bold tracking-tight text-white">
-            DARPO-BENGUET
+            DARPO-BENGUET INTERNS DTR
           </h1>
-          <h2 className="mb-8 text-center text-2xl text-white">
-           NTERNS DTR 
-          </h2>
+         
 
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
             {/* Metadata Inputs */}

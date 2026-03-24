@@ -55,6 +55,11 @@ export async function saveDTRData(
   metadata: DTRData['metadata']
 ): Promise<void> {
   try {
+    if (!db) {
+      console.warn('Firebase not initialized - skipping save');
+      return;
+    }
+
     // Use personName as document name, fallback to userId if no name provided
     const documentName = personName.trim() || userId;
     const docRef = doc(db, DTR_COLLECTION, documentName);
@@ -117,6 +122,11 @@ export async function getDTRData(
   month: number
 ): Promise<DTRData | null> {
   try {
+    if (!db) {
+      console.warn('Firebase not initialized - skipping get');
+      return null;
+    }
+
     // Use personName as document name, fallback to userId if no name provided
     const documentName = personName.trim() || userId;
     const docRef = doc(db, DTR_COLLECTION, documentName);
@@ -141,6 +151,11 @@ export async function getDTRData(
 // Get all DTR data for a user
 export async function getAllDTRData(userId: string): Promise<DTRData[]> {
   try {
+    if (!db) {
+      console.warn('Firebase not initialized - skipping getAll');
+      return [];
+    }
+
     const q = query(
       collection(db, DTR_COLLECTION),
       where("userId", "==", userId)
@@ -168,6 +183,11 @@ export async function deleteDTRData(
   month: number
 ): Promise<void> {
   try {
+    if (!db) {
+      console.warn('Firebase not initialized - skipping delete');
+      return;
+    }
+
     // Use personName as document name, fallback to userId if no name provided
     const documentName = personName.trim() || userId;
     const docRef = doc(db, DTR_COLLECTION, documentName);
