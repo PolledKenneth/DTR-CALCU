@@ -101,6 +101,7 @@ export default function Home() {
   // Debouncing for saves
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const isLoadingRef = useRef(false);
 
   // Debounced save function
   const debouncedSave = useCallback((year: number, month: number, entries: DayEntry[], meta: any) => {
@@ -189,9 +190,13 @@ export default function Home() {
   ): Promise<void> {
     if (!userId) return;
     
+    console.log(`Loading data for ${personName}, ${year}-${month}`);
+    isLoadingRef.current = true;
+    
     try {
       const data = await getDTRData(userId, personName, year, month);
       if (data) {
+        console.log("Found data:", data);
         // Load metadata
         setCourse(data.metadata.course || "");
         setSchool(data.metadata.school || "");
@@ -202,18 +207,26 @@ export default function Home() {
         const monthKey = `${year}-${month}`;
         const monthData = data.months[monthKey];
         if (monthData && monthData.entries) {
+          console.log("Loading entries for month:", monthData.entries);
           setEntries(cloneEntries(monthData.entries));
         } else {
+          console.log("No entries found for month, loading empty entries");
           // If no data for current month, load empty entries
           setEntries(getEmptyMonthEntries(year, month));
         }
       } else {
+        console.log("No data found for person");
         // No data found, load empty entries
         setEntries(getEmptyMonthEntries(year, month));
       }
     } catch (error) {
       console.error("Failed to load from Firebase:", error);
       setEntries(getEmptyMonthEntries(year, month));
+    } finally {
+      // Small delay to prevent the debounced save from triggering immediately
+      setTimeout(() => {
+        isLoadingRef.current = false;
+      }, 100);
     }
   }
 
@@ -238,7 +251,7 @@ export default function Home() {
 
   // Persist edits to Firebase whenever entries change (with debouncing)
   useEffect(() => {
-    if (personName) {
+    if (personName && !isLoadingRef.current) {
       debouncedSave(year, month, entries, { personName, course, school, area, requiredHours });
     }
   }, [
