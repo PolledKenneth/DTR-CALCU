@@ -105,14 +105,19 @@ export default function Home() {
             const initialMonth = typeof parsed.lastMonth === "number" ? parsed.lastMonth : today.getMonth();
             const initialKey = monthKey(initialYear, initialMonth);
 
-            if (Array.isArray(parsed.map[initialKey])) {
-              return parsed.map[initialKey];
+            if (Array.isArray(parsed.map[initialKey]) && isValidMonthEntries(parsed.map[initialKey], initialYear, initialMonth)) {
+              return cloneEntries(parsed.map[initialKey]);
             }
 
-            const todayKey = monthKey(today.getFullYear(), today.getMonth());
-            if (Array.isArray(parsed.map[todayKey])) {
-              return parsed.map[todayKey];
+            // If last-year/last-month isn't provided (old data shape), keep today’s month entry if available.
+            if (typeof parsed.lastYear !== "number" || typeof parsed.lastMonth !== "number") {
+              const todayKey = monthKey(today.getFullYear(), today.getMonth());
+              if (Array.isArray(parsed.map[todayKey]) && isValidMonthEntries(parsed.map[todayKey], today.getFullYear(), today.getMonth())) {
+                return cloneEntries(parsed.map[todayKey]);
+              }
             }
+
+            return getEmptyMonthEntries(initialYear, initialMonth);
           }
 
           // legacy shape
