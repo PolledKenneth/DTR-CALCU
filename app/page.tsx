@@ -87,7 +87,6 @@ function formatMinutesToHM(totalMinutes: number) {
 }
 
 export default function Home() {
-  const STORAGE_KEY = "dtr-calcu-v1";
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -95,56 +94,9 @@ export default function Home() {
 
   const totalDays = daysInMonth(year, month);
 
-  const storageMapRef = useRef<Record<string, DayEntry[]>>({});
-
   const [entries, setEntries] = useState<DayEntry[]>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-
-        if (parsed && typeof parsed === "object") {
-          // new shape
-          if (parsed.map && typeof parsed.map === "object") {
-            storageMapRef.current = parsed.map;
-            const initialYear = typeof parsed.lastYear === "number" ? parsed.lastYear : today.getFullYear();
-            const initialMonth = typeof parsed.lastMonth === "number" ? parsed.lastMonth : today.getMonth();
-            const initialKey = monthKey(initialYear, initialMonth);
-
-            if (Array.isArray(parsed.map[initialKey]) && isValidMonthEntries(parsed.map[initialKey], initialYear, initialMonth)) {
-              return cloneEntries(parsed.map[initialKey]);
-            }
-
-            // If last-year/last-month isn't provided (old data shape), keep today’s month entry if available.
-            if (typeof parsed.lastYear !== "number" || typeof parsed.lastMonth !== "number") {
-              const todayKey = monthKey(today.getFullYear(), today.getMonth());
-              if (Array.isArray(parsed.map[todayKey]) && isValidMonthEntries(parsed.map[todayKey], today.getFullYear(), today.getMonth())) {
-                return cloneEntries(parsed.map[todayKey]);
-              }
-            }
-
-            return getEmptyMonthEntries(initialYear, initialMonth);
-          }
-
-          // legacy shape
-          if (
-            typeof parsed.year === "number" &&
-            typeof parsed.month === "number" &&
-            Array.isArray(parsed.entries)
-          ) {
-            storageMapRef.current[monthKey(parsed.year, parsed.month)] = cloneEntries(parsed.entries);
-            return cloneEntries(parsed.entries);
-          }
-        }
-      }
-    } catch {
-      // ignore parse errors
-    }
-
     return getEmptyMonthEntries(today.getFullYear(), today.getMonth());
   });
-
-  const hasLoadedRef = useRef(false);
 
   // Header metadata state
   const [personName, setPersonName] = useState("");
@@ -167,97 +119,12 @@ export default function Home() {
     }
   }, []);
 
-  // Migrate localStorage data to Firebase when userId is available
+  // Load data from Firebase when component mounts or when year/month changes
   useEffect(() => {
-    if (userId && db && hasLoadedRef.current) {
-      // Delay migration to ensure app is fully loaded
-      const timer = setTimeout(() => {
-        migrateLocalStorageToFirebase();
-      }, 2000);
-      
-      return () => clearTimeout(timer);
+    if (userId && personName && db) {
+      loadFromFirebase(year, month);
     }
-  }, [userId, db, hasLoadedRef.current]);
-
-  // Load saved map once on mount; support legacy shape too.
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-
-        if (parsed && typeof parsed === "object") {
-          // new shape: { map: { '2026-03': [...] }, lastYear, lastMonth }
-          if (parsed.map && typeof parsed.map === "object") {
-            storageMapRef.current = parsed.map;
-            if (parsed.meta) {
-              setPersonName(parsed.meta.personName || "");
-              setCourse(parsed.meta.course || "");
-              setSchool(parsed.meta.school || "");
-              setArea(parsed.meta.area || "");
-              setRequiredHours(parsed.meta.requiredHours ?? "");
-            }
-
-            const restoredYear = typeof parsed.lastYear === "number" ? parsed.lastYear : year;
-            const restoredMonth = typeof parsed.lastMonth === "number" ? parsed.lastMonth : month;
-
-            setYear(restoredYear);
-            setMonth(restoredMonth);
-
-            const key = monthKey(restoredYear, restoredMonth);
-            const candidate = Array.isArray(storageMapRef.current[key]) ? storageMapRef.current[key] : null;
-            if (candidate && isValidMonthEntries(candidate, restoredYear, restoredMonth)) {
-              setEntries(cloneEntries(candidate));
-            } else {
-              setEntries(getEmptyMonthEntries(restoredYear, restoredMonth));
-            }
-
-            return;
-          }
-
-          // legacy shape: { year, month, entries }
-          if (
-            typeof parsed.year === "number" &&
-            typeof parsed.month === "number" &&
-            Array.isArray(parsed.entries)
-          ) {
-            const k = monthKey(parsed.year, parsed.month);
-            storageMapRef.current[k] = parsed.entries;
-            setYear(parsed.year);
-            setMonth(parsed.month);
-            setEntries(parsed.entries);
-            if (parsed.meta) {
-              setPersonName(parsed.meta.personName || "");
-              setCourse(parsed.meta.course || "");
-              setSchool(parsed.meta.school || "");
-              setArea(parsed.meta.area || "");
-              setRequiredHours(parsed.meta.requiredHours ?? "");
-            }
-            return;
-          }
-        }
-      }
-    } catch (e) {
-      // ignore parse errors
-    } finally {
-      hasLoadedRef.current = true;
-    }
-    // if no saved entries, initialize current month entries (already default via useState)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function refreshMapFromLocalStorage() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.map && typeof parsed.map === "object") {
-        storageMapRef.current = parsed.map;
-      }
-    } catch {
-      // ignore
-    }
-  }
+  }, [userId, personName, year, month, db]);
 
   // Save to Firebase function
   async function saveToFirebase(
@@ -290,184 +157,61 @@ export default function Home() {
   async function loadFromFirebase(
     year: number,
     month: number
-  ): Promise<DayEntry[] | null> {
-    if (!userId) return null;
+  ): Promise<void> {
+    if (!userId) return;
     
     try {
       const data = await getDTRData(userId, personName, year, month);
       if (data) {
+        // Load metadata
+        setCourse(data.metadata.course || "");
+        setSchool(data.metadata.school || "");
+        setArea(data.metadata.area || "");
+        setRequiredHours(data.metadata.requiredHours || "");
+        
+        // Load current month entries if available
         const monthKey = `${year}-${month}`;
-        return data.months[monthKey]?.entries || null;
+        const monthData = data.months[monthKey];
+        if (monthData && monthData.entries) {
+          setEntries(cloneEntries(monthData.entries));
+        } else {
+          // If no data for current month, load empty entries
+          setEntries(getEmptyMonthEntries(year, month));
+        }
+      } else {
+        // No data found, load empty entries
+        setEntries(getEmptyMonthEntries(year, month));
       }
-      return null;
     } catch (error) {
       console.error("Failed to load from Firebase:", error);
-      return null;
-    }
-  }
-
-  // Migrate localStorage data to Firebase
-  async function migrateLocalStorageToFirebase() {
-    if (!userId || !db) {
-      console.log('Skipping migration - Firebase not available');
-      return;
-    }
-
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        console.log('No localStorage data to migrate');
-        return;
-      }
-
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") {
-        console.log('Invalid localStorage data format');
-        return;
-      }
-
-      let migrationCount = 0;
-
-      // Handle new shape: { map: { '2026-03': [...] }, lastYear, lastMonth, meta }
-      if (parsed.map && typeof parsed.map === "object") {
-        console.log('Migrating localStorage data to Firebase...');
-        
-        for (const [monthKey, entries] of Object.entries(parsed.map)) {
-          if (Array.isArray(entries)) {
-            const [year, month] = monthKey.split('-').map(Number);
-            const metadata = parsed.meta || {};
-            
-            try {
-              await saveDTRData(userId, metadata.personName || '', year, month, entries, metadata);
-              migrationCount++;
-              console.log(`Migrated ${monthKey} data`);
-            } catch (error) {
-              console.error(`Failed to migrate ${monthKey}:`, error);
-            }
-          }
-        }
-      }
-      // Handle legacy shape: { year, month, entries, meta }
-      else if (typeof parsed.year === "number" && typeof parsed.month === "number" && Array.isArray(parsed.entries)) {
-        console.log('Migrating legacy localStorage data to Firebase...');
-        
-        const metadata = parsed.meta || {};
-        try {
-          await saveDTRData(userId, metadata.personName || '', parsed.year, parsed.month, parsed.entries, metadata);
-          migrationCount++;
-          console.log(`Migrated legacy data for ${parsed.year}-${parsed.month}`);
-        } catch (error) {
-          console.error('Failed to migrate legacy data:', error);
-        }
-      }
-
-      if (migrationCount > 0) {
-        console.log(`✅ Successfully migrated ${migrationCount} months of data to Firebase`);
-        setFirebaseStatus('saved');
-        setTimeout(() => setFirebaseStatus('idle'), 3000);
-      }
-    } catch (error) {
-      console.error('Migration failed:', error);
-    }
-  }
-
-  // Save current month entries into storage map and localStorage
-  function saveMapToLocalStorage(
-    map: Record<string, DayEntry[]>,
-    lastY: number,
-    lastM: number,
-    meta?: {
-      personName?: string;
-      course?: string;
-      school?: string;
-      area?: string;
-      requiredHours?: number | "";
-    }
-  ) {
-    try {
-      const payload = { map, lastYear: lastY, lastMonth: lastM, meta } as any;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      
-      // Also save to Firebase if userId is available
-      if (userId) {
-        saveToFirebase(lastY, lastM, map[monthKey(lastY, lastM)], meta);
-      }
-    } catch (e) {
-      // ignore
+      setEntries(getEmptyMonthEntries(year, month));
     }
   }
 
   // When switching months/years we save current entries and load saved entries for target month if present.
   function handleMonthChange(newMonth: number) {
-    refreshMapFromLocalStorage();
-
-    const curKey = monthKey(year, month);
-    storageMapRef.current[curKey] = cloneEntries(entries);
-
-    const nextKey = monthKey(year, newMonth);
-    const candidate = Array.isArray(storageMapRef.current[nextKey]) ? storageMapRef.current[nextKey] : null;
-
-    const nextEntries =
-      candidate && isValidMonthEntries(candidate, year, newMonth)
-        ? cloneEntries(candidate)
-        : getEmptyMonthEntries(year, newMonth);
-
-    storageMapRef.current[nextKey] = cloneEntries(nextEntries);
-
+    // Save current month data to Firebase
+    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+    
+    // Load new month data
     setMonth(newMonth);
-    setEntries(nextEntries);
-
-    saveMapToLocalStorage(storageMapRef.current, year, newMonth, {
-      personName,
-      course,
-      school,
-      area,
-      requiredHours,
-    });
+    loadFromFirebase(year, newMonth);
   }
 
   function handleYearChange(newYear: number) {
-    refreshMapFromLocalStorage();
-
-    const curKey = monthKey(year, month);
-    storageMapRef.current[curKey] = cloneEntries(entries);
-
-    const nextKey = monthKey(newYear, month);
-    const candidate = Array.isArray(storageMapRef.current[nextKey]) ? storageMapRef.current[nextKey] : null;
-
-    const nextEntries =
-      candidate && isValidMonthEntries(candidate, newYear, month)
-        ? cloneEntries(candidate)
-        : getEmptyMonthEntries(newYear, month);
-
-    storageMapRef.current[nextKey] = cloneEntries(nextEntries);
-
+    // Save current month data to Firebase
+    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+    
+    // Load new year data
     setYear(newYear);
-    setEntries(nextEntries);
-
-    saveMapToLocalStorage(storageMapRef.current, newYear, month, {
-      personName,
-      course,
-      school,
-      area,
-      requiredHours,
-    });
+    loadFromFirebase(newYear, month);
   }
 
-  // Persist edits to the current month's slot whenever entries change
+  // Persist edits to Firebase whenever entries change
   useEffect(() => {
-    if (!hasLoadedRef.current) return;
-
-    const key = monthKey(year, month);
-    storageMapRef.current[key] = cloneEntries(entries);
-
-    saveMapToLocalStorage(storageMapRef.current, year, month, {
-      personName,
-      course,
-      school,
-      area,
-      requiredHours,
-    });
+    if (personName) {
+      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+    }
   }, [
     entries,
     year,
@@ -564,29 +308,14 @@ export default function Home() {
     );
   }
 
-  // Overall taken minutes across all months (based on in-memory map).
+  // Overall taken minutes across all months (based on Firebase data).
   // Initialize from `monthlyTotalMinutes` for SSR hydration parity.
   const [overallTakenMinutes, setOverallTakenMinutes] = useState<number>(monthlyTotalMinutes);
 
   useEffect(() => {
-    let total = 0;
-
-    const mapSnapshot = storageMapRef.current;
-
-    if (Object.keys(mapSnapshot).length === 0) {
-      // no persisted data yet; use current month total until storage map is populated.
-      setOverallTakenMinutes(monthlyTotalMinutes);
-      return;
-    }
-
-    for (const monthArr of Object.values(mapSnapshot)) {
-      if (!Array.isArray(monthArr)) continue;
-      for (const e of monthArr) {
-        total += entryTotalMinutes(e);
-      }
-    }
-
-    setOverallTakenMinutes(total);
+    // For now, just use current month total
+    // In the future, we could fetch all months data from Firebase
+    setOverallTakenMinutes(monthlyTotalMinutes);
   }, [monthlyTotalMinutes, year, month, entries]);
 
   const REMAIN_BASE_HOURS = 486; // base for the /486 metric
@@ -607,17 +336,9 @@ export default function Home() {
   }
 
   function clearCurrentMonth() {
-    const key = monthKey(year, month);
     const cleaned = getEmptyMonthEntries(year, month);
-    storageMapRef.current[key] = cloneEntries(cleaned);
     setEntries(cleaned);
-    saveMapToLocalStorage(storageMapRef.current, year, month, {
-      personName,
-      course,
-      school,
-      area,
-      requiredHours,
-    });
+    saveToFirebase(year, month, cleaned, { personName, course, school, area, requiredHours });
   }
 
   return (
@@ -641,7 +362,7 @@ export default function Home() {
                   value={personName}
                   onChange={(e) => setPersonName(e.target.value)}
                   onBlur={() => {
-                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area, requiredHours });
+                    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
                   }}
                 />
               </label>
@@ -654,7 +375,7 @@ export default function Home() {
                   value={school}
                   onChange={(e) => setSchool(e.target.value)}
                   onBlur={() => {
-                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area, requiredHours });
+                    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
                   }}
                 />
               </label>
@@ -667,7 +388,7 @@ export default function Home() {
                   value={course}
                   onChange={(e) => setCourse(e.target.value)}
                   onBlur={() => {
-                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area, requiredHours });
+                    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
                   }}
                 />
               </label>
@@ -680,7 +401,7 @@ export default function Home() {
                   value={area}
                   onChange={(e) => setArea(e.target.value)}
                   onBlur={() => {
-                    saveMapToLocalStorage(storageMapRef.current, year, month, { personName, course, school, area, requiredHours });
+                    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
                   }}
                 />
               </label>
@@ -759,20 +480,10 @@ export default function Home() {
                   {firebaseStatus === 'saving' ? 'Saving to cloud...' :
                    firebaseStatus === 'saved' ? 'Saved to cloud' :
                    firebaseStatus === 'error' ? 'Save failed' :
-                   'Local storage'}
+                   'Ready'}
                 </span>
               </div>
 
-              {/* Migration Button */}
-              {db && (
-                <button
-                  onClick={() => migrateLocalStorageToFirebase()}
-                  className="rounded-md border border-blue-500 bg-blue-600/20 px-3 py-2 text-sm text-blue-300 hover:bg-blue-500/25 transition-colors"
-                  type="button"
-                >
-                  Migrate to Cloud
-                </button>
-              )}
 
               <div className="flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-4 py-2">
                 <span className="text-sm text-slate-400">Monthly Total:</span>
