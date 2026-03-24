@@ -122,7 +122,7 @@ export default function Home() {
   const [requiredHours, setRequiredHours] = useState<number | "">("");
   const [firebaseStatus, setFirebaseStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-  // Initialize userId (for demo, using a simple ID - in production use Firebase Auth)
+  // Initialize userId and personName from localStorage
   useEffect(() => {
     const storedUserId = localStorage.getItem("dtr-user-id");
     if (storedUserId) {
@@ -133,7 +133,20 @@ export default function Home() {
       localStorage.setItem("dtr-user-id", newUserId);
       setUserId(newUserId);
     }
+
+    // Load the last used person name
+    const storedPersonName = localStorage.getItem("dtr-last-person-name");
+    if (storedPersonName) {
+      setPersonName(storedPersonName);
+    }
   }, []);
+
+  // Save personName to localStorage when it changes
+  useEffect(() => {
+    if (personName) {
+      localStorage.setItem("dtr-last-person-name", personName);
+    }
+  }, [personName]);
 
   // Load data from Firebase when component mounts or when year/month changes
   useEffect(() => {
