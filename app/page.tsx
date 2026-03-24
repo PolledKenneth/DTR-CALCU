@@ -138,6 +138,7 @@ export default function Home() {
   });
 
   const storageMapRef = useRef<Record<string, DayEntry[]>>({});
+  const hasLoadedRef = useRef(false);
 
   // Header metadata state
   const [personName, setPersonName] = useState("");
@@ -206,6 +207,8 @@ export default function Home() {
       }
     } catch (e) {
       // ignore parse errors
+    } finally {
+      hasLoadedRef.current = true;
     }
     // if no saved entries, initialize current month entries (already default via useState)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -287,6 +290,8 @@ export default function Home() {
 
   // Persist edits to the current month's slot whenever entries change
   useEffect(() => {
+    if (!hasLoadedRef.current) return;
+
     const key = monthKey(year, month);
     storageMapRef.current[key] = cloneEntries(entries);
 
