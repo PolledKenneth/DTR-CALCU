@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { saveDTRData, getDTRData, getAllDTRData, type DTRData } from "../lib/firebase-service";
 import { db } from "../lib/firebase";
 
@@ -97,6 +97,22 @@ export default function Home() {
   const [entries, setEntries] = useState<DayEntry[]>(() => {
     return getEmptyMonthEntries(today.getFullYear(), today.getMonth());
   });
+
+  // Debouncing for saves
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Debounced save function
+  const debouncedSave = useCallback((year: number, month: number, entries: DayEntry[], meta: any) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      saveToFirebase(year, month, entries, meta);
+      setIsDirty(false);
+    }, 1000); // Wait 1 second after user stops typing
+  }, []);
 
   // Header metadata state
   const [personName, setPersonName] = useState("");
@@ -207,10 +223,10 @@ export default function Home() {
     loadFromFirebase(newYear, month);
   }
 
-  // Persist edits to Firebase whenever entries change
+  // Persist edits to Firebase whenever entries change (with debouncing)
   useEffect(() => {
     if (personName) {
-      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+      debouncedSave(year, month, entries, { personName, course, school, area, requiredHours });
     }
   }, [
     entries,
@@ -221,7 +237,17 @@ export default function Home() {
     school,
     area,
     requiredHours,
+    debouncedSave,
   ]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function updateEntry(
     index: number,
@@ -360,9 +386,15 @@ export default function Home() {
                   type="text"
                   className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={personName}
-                  onChange={(e) => setPersonName(e.target.value)}
+                  onChange={(e) => {
+                    setPersonName(e.target.value);
+                    setIsDirty(true);
+                  }}
                   onBlur={() => {
-                    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                    if (isDirty) {
+                      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                      setIsDirty(false);
+                    }
                   }}
                 />
               </label>
@@ -373,9 +405,15 @@ export default function Home() {
                   type="text"
                   className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={school}
-                  onChange={(e) => setSchool(e.target.value)}
+                  onChange={(e) => {
+                    setSchool(e.target.value);
+                    setIsDirty(true);
+                  }}
                   onBlur={() => {
-                    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                    if (isDirty) {
+                      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                      setIsDirty(false);
+                    }
                   }}
                 />
               </label>
@@ -386,9 +424,15 @@ export default function Home() {
                   type="text"
                   className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={course}
-                  onChange={(e) => setCourse(e.target.value)}
+                  onChange={(e) => {
+                    setCourse(e.target.value);
+                    setIsDirty(true);
+                  }}
                   onBlur={() => {
-                    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                    if (isDirty) {
+                      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                      setIsDirty(false);
+                    }
                   }}
                 />
               </label>
@@ -399,9 +443,15 @@ export default function Home() {
                   type="text"
                   className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={area}
-                  onChange={(e) => setArea(e.target.value)}
+                  onChange={(e) => {
+                    setArea(e.target.value);
+                    setIsDirty(true);
+                  }}
                   onBlur={() => {
-                    saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                    if (isDirty) {
+                      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                      setIsDirty(false);
+                    }
                   }}
                 />
               </label>
