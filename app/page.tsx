@@ -39,6 +39,15 @@ function getEmptyMonthEntries(year: number, month: number): DayEntry[] {
   return arr;
 }
 
+function isValidMonthEntries(entries: DayEntry[], year: number, month: number) {
+  const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  return entries.every((e) => e.date.startsWith(prefix));
+}
+
+function cloneEntries(entries: DayEntry[]) {
+  return entries.map((e) => ({ ...e }));
+}
+
 function formatDateWithDay(dateStr: string) {
   try {
     const d = new Date(dateStr + "T00:00");
@@ -158,8 +167,9 @@ export default function Home() {
             setMonth(restoredMonth);
 
             const key = monthKey(restoredYear, restoredMonth);
-            if (Array.isArray(storageMapRef.current[key])) {
-              setEntries(storageMapRef.current[key]);
+            const candidate = Array.isArray(storageMapRef.current[key]) ? storageMapRef.current[key] : null;
+            if (candidate && isValidMonthEntries(candidate, restoredYear, restoredMonth)) {
+              setEntries(cloneEntries(candidate));
             } else {
               setEntries(getEmptyMonthEntries(restoredYear, restoredMonth));
             }
@@ -231,21 +241,12 @@ export default function Home() {
 
     setMonth(newMonth);
     const nextKey = monthKey(year, newMonth);
-    if (storageMapRef.current[nextKey]) {
-      setEntries(storageMapRef.current[nextKey]);
+    const candidate = Array.isArray(storageMapRef.current[nextKey]) ? storageMapRef.current[nextKey] : null;
+    if (candidate && isValidMonthEntries(candidate, year, newMonth)) {
+      setEntries(cloneEntries(candidate));
     } else {
-      const arr: DayEntry[] = [];
-      const nextTotalDays = daysInMonth(year, newMonth);
-      for (let d = 1; d <= nextTotalDays; d++) {
-        arr.push({
-          date: formatDate(year, newMonth, d),
-          morningIn: "",
-          morningOut: "",
-          afternoonIn: "",
-          afternoonOut: "",
-        });
-      }
-      setEntries(arr);
+      const newEntries = getEmptyMonthEntries(year, newMonth);
+      setEntries(newEntries);
     }
   }
 
@@ -262,28 +263,18 @@ export default function Home() {
 
     setYear(newYear);
     const nextKey = monthKey(newYear, month);
-    if (storageMapRef.current[nextKey]) {
-      setEntries(storageMapRef.current[nextKey]);
+    const candidate = Array.isArray(storageMapRef.current[nextKey]) ? storageMapRef.current[nextKey] : null;
+    if (candidate && isValidMonthEntries(candidate, newYear, month)) {
+      setEntries(cloneEntries(candidate));
     } else {
-      const arr: DayEntry[] = [];
-      const nextTotalDays = daysInMonth(newYear, month);
-      for (let d = 1; d <= nextTotalDays; d++) {
-        arr.push({
-          date: formatDate(newYear, month, d),
-          morningIn: "",
-          morningOut: "",
-          afternoonIn: "",
-          afternoonOut: "",
-        });
-      }
-      setEntries(arr);
+      setEntries(getEmptyMonthEntries(newYear, month));
     }
   }
 
   // Persist edits to the current month's slot whenever entries change
   useEffect(() => {
     const key = monthKey(year, month);
-    storageMapRef.current[key] = entries.map((e) => ({ ...e }));
+    storageMapRef.current[key] = cloneEntries(entries);
 
     saveMapToLocalStorage(storageMapRef.current, year, month, {
       personName,
