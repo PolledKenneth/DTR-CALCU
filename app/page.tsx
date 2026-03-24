@@ -426,6 +426,20 @@ export default function Home() {
     );
   }
 
+  function clearCurrentMonth() {
+    const key = monthKey(year, month);
+    const cleaned = getEmptyMonthEntries(year, month);
+    storageMapRef.current[key] = cloneEntries(cleaned);
+    setEntries(cleaned);
+    saveMapToLocalStorage(storageMapRef.current, year, month, {
+      personName,
+      course,
+      school,
+      area,
+      requiredHours,
+    });
+  }
+
   return (
     <div className="min-h-screen bg-black p-6 font-sans text-white selection:bg-slate-700">
       <div className="mx-auto max-w-5xl space-y-8">
@@ -545,6 +559,13 @@ export default function Home() {
                   return <option key={y} value={y}>{y}</option>
                 })}
               </select>
+              <button
+                onClick={clearCurrentMonth}
+                className="rounded-md border border-red-500 bg-red-600/20 px-3 py-2 text-sm text-red-300 hover:bg-red-500/25"
+                type="button"
+              >
+                Clear Month
+              </button>
             </div>
 
             <div className="flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-4 py-2">
