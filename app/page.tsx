@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useRef } from "react";
 import { saveDTRData, getDTRData, getAllDTRData, type DTRData } from "../lib/firebase-service";
+import { db } from "../lib/firebase";
 
 type DayEntry = {
   date: string;
@@ -166,6 +167,18 @@ export default function Home() {
     }
   }, []);
 
+  // Migrate localStorage data to Firebase when userId is available
+  useEffect(() => {
+    if (userId && db && hasLoadedRef.current) {
+      // Delay migration to ensure app is fully loaded
+      const timer = setTimeout(() => {
+        migrateLocalStorageToFirebase();
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [userId, db, hasLoadedRef.current]);
+
   // Load saved map once on mount; support legacy shape too.
   useEffect(() => {
     try {
@@ -273,7 +286,7 @@ export default function Home() {
     }
   }
 
-  // Load from Firebase function
+// Load from Firebase function
   async function loadFromFirebase(
     year: number,
     month: number
@@ -290,6 +303,71 @@ export default function Home() {
     } catch (error) {
       console.error("Failed to load from Firebase:", error);
       return null;
+    }
+  }
+
+  // Migrate localStorage data to Firebase
+  async function migrateLocalStorageToFirebase() {
+    if (!userId || !db) {
+      console.log('Skipping migration - Firebase not available');
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        console.log('No localStorage data to migrate');
+        return;
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        console.log('Invalid localStorage data format');
+        return;
+      }
+
+      let migrationCount = 0;
+
+      // Handle new shape: { map: { '2026-03': [...] }, lastYear, lastMonth, meta }
+      if (parsed.map && typeof parsed.map === "object") {
+        console.log('Migrating localStorage data to Firebase...');
+        
+        for (const [monthKey, entries] of Object.entries(parsed.map)) {
+          if (Array.isArray(entries)) {
+            const [year, month] = monthKey.split('-').map(Number);
+            const metadata = parsed.meta || {};
+            
+            try {
+              await saveDTRData(userId, metadata.personName || '', year, month, entries, metadata);
+              migrationCount++;
+              console.log(`Migrated ${monthKey} data`);
+            } catch (error) {
+              console.error(`Failed to migrate ${monthKey}:`, error);
+            }
+          }
+        }
+      }
+      // Handle legacy shape: { year, month, entries, meta }
+      else if (typeof parsed.year === "number" && typeof parsed.month === "number" && Array.isArray(parsed.entries)) {
+        console.log('Migrating legacy localStorage data to Firebase...');
+        
+        const metadata = parsed.meta || {};
+        try {
+          await saveDTRData(userId, metadata.personName || '', parsed.year, parsed.month, parsed.entries, metadata);
+          migrationCount++;
+          console.log(`Migrated legacy data for ${parsed.year}-${parsed.month}`);
+        } catch (error) {
+          console.error('Failed to migrate legacy data:', error);
+        }
+      }
+
+      if (migrationCount > 0) {
+        console.log(`✅ Successfully migrated ${migrationCount} months of data to Firebase`);
+        setFirebaseStatus('saved');
+        setTimeout(() => setFirebaseStatus('idle'), 3000);
+      }
+    } catch (error) {
+      console.error('Migration failed:', error);
     }
   }
 
@@ -684,6 +762,17 @@ export default function Home() {
                    'Local storage'}
                 </span>
               </div>
+
+              {/* Migration Button */}
+              {db && (
+                <button
+                  onClick={() => migrateLocalStorageToFirebase()}
+                  className="rounded-md border border-blue-500 bg-blue-600/20 px-3 py-2 text-sm text-blue-300 hover:bg-blue-500/25 transition-colors"
+                  type="button"
+                >
+                  Migrate to Cloud
+                </button>
+              )}
 
               <div className="flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-4 py-2">
                 <span className="text-sm text-slate-400">Monthly Total:</span>
