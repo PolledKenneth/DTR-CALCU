@@ -66,8 +66,32 @@ export async function saveDTRData(
     const docRef = doc(db, DTR_COLLECTION, documentName);
     const docSnap = await getDoc(docRef);
 
-    const monthKey = `${year}-${month}`;
+    const monthKey = `${year}-${String(month).padStart(2, "0")}`;
     const now = Timestamp.now();
+
+    console.log(" FIREBASE SERVICE: Saving data", {
+      documentName,
+      monthKey,
+      hasExistingDoc: docSnap.exists(),
+      // Document-level metadata (saved once per person)
+      metadataBeingSaved: updatedMetadata,
+      // Month-specific data (saved per month)
+      monthDataBeingSaved: {
+        year,
+        month,
+        entriesCount: entries.length,
+        entriesWithTimeData: entries.filter(e => 
+          e.morningIn || e.morningOut || e.afternoonIn || e.afternoonOut
+        ).length,
+        sampleEntries: entries.slice(0, 3).map(e => ({
+          date: e.date,
+          morningIn: e.morningIn,
+          morningOut: e.morningOut,
+          afternoonIn: e.afternoonIn,
+          afternoonOut: e.afternoonOut
+        }))
+      }
+    });
 
     if (docSnap.exists()) {
       // Update existing document
@@ -135,7 +159,7 @@ export async function getDTRData(
     
     if (docSnap.exists()) {
       const data = docSnap.data() as DTRData;
-      const monthKey = `${year}-${month}`;
+      const monthKey = `${year}-${String(month).padStart(2, "0")}`;
       
       // Check if the specific month exists
       if (data.months[monthKey]) {

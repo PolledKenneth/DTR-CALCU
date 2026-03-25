@@ -91,25 +91,67 @@ export default function Home() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [userId, setUserId] = useState<string>(""); // Firebase user ID
+  const userIdRef = useRef(userId);
+  
+  // Keep userIdRef in sync
+  useEffect(() => {
+    userIdRef.current = userId;
+    console.log("🆔 userId updated:", userId);
+  }, [userId]);
 
   const totalDays = daysInMonth(year, month);
 
   const [entries, setEntries] = useState<DayEntry[]>(() => {
-    return getEmptyMonthEntries(today.getFullYear(), today.getMonth());
+    const initialEntries = getEmptyMonthEntries(year, month);
+    console.log("🆕 Entries initialized:", { year, month, count: initialEntries.length });
+    return initialEntries;
   });
+
+  // Track the last saved entries to prevent duplicate saves and false triggers
+  const lastSavedEntriesRef = useRef<DayEntry[]>(JSON.parse(JSON.stringify(getEmptyMonthEntries(year, month))));
+  
+  // Wrapper to track all setEntries calls
+  const setEntriesTracked = useCallback((newEntriesOrFn: DayEntry[] | ((prev: DayEntry[]) => DayEntry[])) => {
+    console.log("🔄 setEntries called");
+    if (typeof newEntriesOrFn === 'function') {
+      setEntries((prev) => {
+        const newEntries = newEntriesOrFn(prev);
+        const hasData = newEntries.some(e => e.morningIn || e.morningOut || e.afternoonIn || e.afternoonOut);
+        console.log("🔄 Entries updated via function:", { 
+          prevCount: prev.length, 
+          newCount: newEntries.length,
+          hasData,
+          sampleEntry: newEntries[0]
+        });
+        return newEntries;
+      });
+    } else {
+      const hasData = newEntriesOrFn.some(e => e.morningIn || e.morningOut || e.afternoonIn || e.afternoonOut);
+      console.log("🔄 Entries set directly:", { 
+        count: newEntriesOrFn.length,
+        hasData,
+        sampleEntry: newEntriesOrFn[0]
+      });
+      setEntries(newEntriesOrFn);
+    }
+  }, []);
 
   // Debouncing for saves
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const isLoadingRef = useRef(false);
+  const [fieldLoading, setFieldLoading] = useState<string[]>([]);
+  const [showSaved, setShowSaved] = useState(false);
 
   // Debounced save function
   const debouncedSave = useCallback((year: number, month: number, entries: DayEntry[], meta: any) => {
+    console.log("⏳ debouncedSave called, clearing old timeout and setting new one");
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
     
     saveTimeoutRef.current = setTimeout(() => {
+      console.log("⏰ Timeout fired, calling saveToFirebase");
       saveToFirebase(year, month, entries, meta);
       setIsDirty(false);
     }, 1000); // Wait 1 second after user stops typing
@@ -124,6 +166,10 @@ export default function Home() {
   const [firebaseStatus, setFirebaseStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   // Initialize userId and personName from localStorage
+  const [isPersonNameLoaded, setIsPersonNameLoaded] = useState(false);
+  const [isInitialDataLoaded, setIsInitialDataLoaded] = useState(false);
+  const loadAttemptedRef = useRef(false);
+  
   useEffect(() => {
     const storedUserId = localStorage.getItem("dtr-user-id");
     if (storedUserId) {
@@ -138,7 +184,29 @@ export default function Home() {
     // Load the last used person name
     const storedPersonName = localStorage.getItem("dtr-last-person-name");
     if (storedPersonName) {
+      console.log("📋 Loading stored person name:", storedPersonName);
       setPersonName(storedPersonName);
+      setIsPersonNameLoaded(true);
+      
+      // Also restore last viewed month/year for this person (CRITICAL FIX #2: convert 1-based to 0-based)
+      const storedYear = localStorage.getItem(`dtr-last-year-${storedPersonName}`);
+      const storedMonth = localStorage.getItem(`dtr-last-month-${storedPersonName}`);
+      
+      console.log("📅 Stored month/year:", { storedYear, storedMonth });
+      
+      if (storedYear && storedMonth) {
+        const yearNum = parseInt(storedYear);
+        const monthNum = parseInt(storedMonth) - 1; // Convert 1-based to 0-based
+        if (!isNaN(yearNum) && !isNaN(monthNum) && monthNum >= 0 && monthNum <= 11) {
+          console.log("📅 Restoring month/year:", { yearNum, monthNum });
+          setYear(yearNum);
+          setMonth(monthNum);
+        }
+      }
+    } else {
+      console.log("📋 No stored person name found");
+      setIsPersonNameLoaded(true); // Mark as loaded even if empty
+      setIsInitialDataLoaded(true); // No data to load, allow saves immediately
     }
   }, []);
 
@@ -149,12 +217,41 @@ export default function Home() {
     }
   }, [personName]);
 
+  // Save current month/year when they change (CRITICAL FIX #2: store 1-based month)
+  useEffect(() => {
+    if (personName) {
+      localStorage.setItem(`dtr-last-year-${personName}`, year.toString());
+      localStorage.setItem(`dtr-last-month-${personName}`, (month + 1).toString()); // Store as 1-based
+    }
+  }, [personName, year, month]);
+
   // Load data from Firebase when component mounts or when year/month changes
   useEffect(() => {
-    if (userId && personName && db) {
-      loadFromFirebase(year, month);
+    console.log("🔄 Checking data load conditions:", {
+      userId,
+      isPersonNameLoaded,
+      personName,
+      hasDB: !!db,
+      year,
+      month
+    });
+    
+    if (userId && isPersonNameLoaded && personName && db) {
+      console.log("✅ All conditions met, will load data in 50ms");
+      // Use a small delay to ensure all state is updated
+      setTimeout(() => {
+        console.log("🚀 Now loading data...");
+        loadFromFirebase(year, month);
+      }, 50);
+    } else {
+      console.log("❌ Load conditions not met:", {
+        hasUserId: !!userId,
+        isPersonNameLoaded,
+        hasPersonName: !!personName,
+        hasDB: !!db
+      });
     }
-  }, [userId, personName, year, month, db]);
+  }, [userId, isPersonNameLoaded, personName, year, month, db]);
 
   // Save to Firebase function
   async function saveToFirebase(
@@ -169,15 +266,54 @@ export default function Home() {
       requiredHours?: number | "";
     }
   ) {
-    if (!userId) return;
+    // CRITICAL FIX #1: Block save if no personName
+    // Use ref for userId to ensure we have the latest value
+    const currentUserId = userIdRef.current;
+    if (!currentUserId || !meta?.personName?.trim()) {
+      console.log("❌ SAVE BLOCKED: No userId or personName", { userId: currentUserId, personName: meta?.personName });
+      return;
+    }
+    
+    // CRITICAL FIX #2: Use correct month format (0-based to 1-based)
+    const monthForSave = month + 1;
+    
+    console.log("🚀 SAVING TO FIREBASE:", {
+      userId: currentUserId,
+      personName: meta?.personName,
+      isNewPerson: meta?.personName ? `Will create/update document: "${meta.personName}"` : 'No person name',
+      year,
+      month: monthForSave,
+      originalMonth: month,
+      entriesCount: entries.length,
+      // Show actual time entries with data
+      timeEntries: entries.filter(e => e.morningIn || e.morningOut || e.afternoonIn || e.afternoonOut).map(e => ({
+        date: e.date,
+        morning: `${e.morningIn}-${e.morningOut}`,
+        afternoon: `${e.afternoonIn}-${e.afternoonOut}`
+      })),
+      // Show complete metadata being saved
+      metadata: {
+        personName: meta?.personName,
+        course: meta?.course,
+        school: meta?.school,
+        area: meta?.area,
+        requiredHours: meta?.requiredHours
+      }
+    });
     
     try {
       setFirebaseStatus('saving');
-      await saveDTRData(userId, meta?.personName || '', year, month, entries, meta || {});
+      // CRITICAL FIX #2: Pass correct month (1-based) to saveDTRData
+      await saveDTRData(currentUserId, meta.personName.trim(), year, monthForSave, entries, meta);
       setFirebaseStatus('saved');
-      setTimeout(() => setFirebaseStatus('idle'), 2000);
+      setShowSaved(true);
+      console.log("✅ SAVED SUCCESSFULLY");
+      setTimeout(() => {
+        setFirebaseStatus('idle');
+        setShowSaved(false);
+      }, 2000);
     } catch (error) {
-      console.error("Failed to save to Firebase:", error);
+      console.error("❌ FAILED TO SAVE:", error);
       setFirebaseStatus('error');
       setTimeout(() => setFirebaseStatus('idle'), 3000);
     }
@@ -188,44 +324,89 @@ export default function Home() {
     year: number,
     month: number
   ): Promise<void> {
-    if (!userId) return;
+    // CRITICAL FIX #5: Extra guard - don't load without proper data
+    if (!userId || !personName?.trim()) {
+      console.log("❌ LOAD BLOCKED: No userId or personName", { userId, personName });
+      // For first-time users with no name, still allow data entry
+      if (!personName?.trim()) {
+        setIsInitialDataLoaded(true);
+        console.log("✅ First-time user - allowing data entry without load");
+      }
+      return;
+    }
     
-    console.log(`Loading data for ${personName}, ${year}-${month}`);
+    // CRITICAL FIX #2: Use correct month format (0-based to 1-based)
+    const monthForLoad = month + 1;
+    
+    console.log("📥 LOADING FROM FIREBASE:", { userId, personName, year, month: monthForLoad, originalMonth: month });
     isLoadingRef.current = true;
+    setFieldLoading(['all']);
     
     try {
-      const data = await getDTRData(userId, personName, year, month);
+      // CRITICAL FIX #2: Pass correct month (1-based) to getDTRData
+      const data = await getDTRData(userId, personName.trim(), year, monthForLoad);
+      console.log("📊 FIREBASE DATA RECEIVED:", data);
+      
       if (data) {
-        console.log("Found data:", data);
+        console.log("✅ Person data found:", {
+          metadata: data.metadata,
+          months: Object.keys(data.months || {})
+        });
+        
         // Load metadata
         setCourse(data.metadata.course || "");
         setSchool(data.metadata.school || "");
         setArea(data.metadata.area || "");
         setRequiredHours(data.metadata.requiredHours || "");
         
-        // Load current month entries if available
-        const monthKey = `${year}-${month}`;
-        const monthData = data.months[monthKey];
-        if (monthData && monthData.entries) {
-          console.log("Loading entries for month:", monthData.entries);
-          setEntries(cloneEntries(monthData.entries));
+        // CRITICAL FIX #2: Use correct month format for lookup
+        const monthKey = `${year}-${String(monthForLoad).padStart(2, "0")}`;
+        const monthData = data.months?.[monthKey];
+        
+        console.log("🔍 Month data check:", { monthKey, monthData });
+        
+        if (monthData?.entries && monthData.entries.length > 0) {
+          const hasAnyData = monthData.entries.some(e => 
+            e.morningIn || e.morningOut || e.afternoonIn || e.afternoonOut
+          );
+          
+          if (hasAnyData) {
+            console.log("✅ Loading entries with data:", monthData.entries);
+            setEntries(cloneEntries(monthData.entries));
+            // Update lastSavedEntriesRef so we don't trigger save immediately after load
+            lastSavedEntriesRef.current = JSON.parse(JSON.stringify(monthData.entries));
+            console.log("✅ Entries state updated with loaded data");
+          } else {
+            console.log("⚠️ Entries exist but all empty, loading empty template");
+            const emptyEntries = getEmptyMonthEntries(year, month);
+            setEntries(emptyEntries);
+            lastSavedEntriesRef.current = JSON.parse(JSON.stringify(emptyEntries));
+          }
         } else {
-          console.log("No entries found for month, loading empty entries");
-          // If no data for current month, load empty entries
-          setEntries(getEmptyMonthEntries(year, month));
+          console.log("⚠️ No entries in Firebase for this month, loading empty template");
+          // Load empty entries for this month
+          const emptyEntries = getEmptyMonthEntries(year, month);
+          setEntries(emptyEntries);
+          lastSavedEntriesRef.current = JSON.parse(JSON.stringify(emptyEntries));
         }
       } else {
-        console.log("No data found for person");
+        console.log("⚠️ No person data found in Firebase, loading empty template");
         // No data found, load empty entries
-        setEntries(getEmptyMonthEntries(year, month));
+        const emptyEntries = getEmptyMonthEntries(year, month);
+        setEntries(emptyEntries);
+        lastSavedEntriesRef.current = JSON.parse(JSON.stringify(emptyEntries));
       }
     } catch (error) {
-      console.error("Failed to load from Firebase:", error);
-      setEntries(getEmptyMonthEntries(year, month));
+      console.error("❌ FAILED TO LOAD:", error);
+      const emptyEntries = getEmptyMonthEntries(year, month);
+      setEntries(emptyEntries);
+      lastSavedEntriesRef.current = JSON.parse(JSON.stringify(emptyEntries));
     } finally {
-      // Small delay to prevent the debounced save from triggering immediately
       setTimeout(() => {
         isLoadingRef.current = false;
+        setFieldLoading([]);
+        setIsInitialDataLoaded(true); // Mark initial load as complete
+        console.log("🏁 Loading complete - initial data loaded");
       }, 100);
     }
   }
@@ -234,6 +415,9 @@ export default function Home() {
   function handleMonthChange(newMonth: number) {
     // Save current month data to Firebase
     saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+    
+    // Reset initial data loaded flag for new month
+    setIsInitialDataLoaded(false);
     
     // Load new month data
     setMonth(newMonth);
@@ -244,6 +428,9 @@ export default function Home() {
     // Save current month data to Firebase
     saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
     
+    // Reset initial data loaded flag for new year
+    setIsInitialDataLoaded(false);
+    
     // Load new year data
     setYear(newYear);
     loadFromFirebase(newYear, month);
@@ -251,20 +438,58 @@ export default function Home() {
 
   // Persist edits to Firebase whenever entries change (with debouncing)
   useEffect(() => {
-    if (personName && !isLoadingRef.current) {
-      debouncedSave(year, month, entries, { personName, course, school, area, requiredHours });
+    // CRITICAL: Block saves until initial data load is complete
+    if (!personName || !isPersonNameLoaded || !isInitialDataLoaded || isLoadingRef.current) {
+      console.log("📝 Save useEffect - blocked:", {
+        personName: !!personName,
+        isPersonNameLoaded,
+        isInitialDataLoaded,
+        isLoading: isLoadingRef.current
+      });
+      return;
     }
-  }, [
-    entries,
-    year,
-    month,
-    personName,
-    course,
-    school,
-    area,
-    requiredHours,
-    debouncedSave,
-  ]);
+    
+    // Check if entries actually changed from last save
+    const currentEntriesStr = JSON.stringify(entries);
+    const lastSavedStr = JSON.stringify(lastSavedEntriesRef.current);
+    const entriesChanged = currentEntriesStr !== lastSavedStr;
+    const hasData = entries.some(e => e.morningIn || e.morningOut || e.afternoonIn || e.afternoonOut);
+    
+    console.log("📝 Save useEffect - checking:", {
+      entriesChanged,
+      hasData,
+      entriesLength: entries.length,
+      lastSavedLength: lastSavedEntriesRef.current.length
+    });
+    
+    if (!entriesChanged || !hasData) {
+      return;
+    }
+    
+    console.log("📝 Entries changed with data, triggering debounced save");
+    
+    // Update last saved ref
+    lastSavedEntriesRef.current = JSON.parse(currentEntriesStr);
+    
+    // Trigger debounced save
+    debouncedSave(year, month, entries, { personName, course, school, area, requiredHours });
+    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, isInitialDataLoaded]);
+
+  // CRITICAL FIX #4: Force save on page unload if dirty
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (isDirty && personName) {
+        console.log("⚡ EMERGENCY SAVE: Page unloading with unsaved changes");
+        // Use sync-ish approach for beforeunload
+        saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty, entries, year, month, personName, course, school, area, requiredHours]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -280,11 +505,20 @@ export default function Home() {
     field: "morningIn" | "morningOut" | "afternoonIn" | "afternoonOut",
     value: string
   ) {
+    console.log(`✏️ updateEntry: row ${index}, field ${field}, value "${value}"`);
+    const fieldId = `${index}-${field}`;
+    setFieldLoading(prev => [...prev.filter(id => id !== fieldId), fieldId]);
     setEntries((prev) => {
       const copy = prev.slice();
       copy[index] = { ...copy[index], [field]: value };
+      console.log(`📝 Entry ${index} updated:`, copy[index]);
       return copy;
     });
+    
+    // Clear loading state after a short delay
+    setTimeout(() => {
+      setFieldLoading(prev => prev.filter(id => id !== fieldId));
+    }, 500);
   }
 
   function parseTime(t: string) {
@@ -376,6 +610,7 @@ export default function Home() {
     typeof requiredHours === "number" ? Math.max(0, requiredHours * 60 - monthlyTotalMinutes) : null;
 
   function reset() {
+    console.log("🗑️ Reset called - clearing all entries");
     setEntries((prev) =>
       prev.map((e) => ({
         ...e,
@@ -388,6 +623,7 @@ export default function Home() {
   }
 
   function clearCurrentMonth() {
+    console.log("🗑️ clearCurrentMonth called");
     const cleaned = getEmptyMonthEntries(year, month);
     setEntries(cleaned);
     saveToFirebase(year, month, cleaned, { personName, course, school, area, requiredHours });
@@ -408,78 +644,122 @@ export default function Home() {
             <div className="grid gap-5 lg:col-span-2 sm:grid-cols-2">
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-300">Name</span>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={personName}
-                  onChange={(e) => {
-                    setPersonName(e.target.value);
-                    setIsDirty(true);
-                  }}
-                  onBlur={() => {
-                    if (isDirty) {
-                      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
-                      setIsDirty(false);
-                    }
-                  }}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    className={`w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                      fieldLoading.includes('personName') ? 'pl-8' : ''
+                    }`}
+                    value={personName}
+                    onChange={(e) => {
+                      setPersonName(e.target.value);
+                      setIsDirty(true);
+                    }}
+                    onBlur={() => {
+                      if (isDirty) {
+                        setFieldLoading(['personName']);
+                        saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                        setIsDirty(false);
+                        setTimeout(() => setFieldLoading([]), 500);
+                      }
+                    }}
+                  />
+                  {fieldLoading.includes('personName') && (
+                    <div className="absolute left-3 top-2.5">
+                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent border-r-transparent animate-spin rounded-full border-l-blue-500 border-b-blue-500"></div>
+                    </div>
+                  )}
+                </div>
               </label>
 
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-300">School</span>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={school}
-                  onChange={(e) => {
-                    setSchool(e.target.value);
-                    setIsDirty(true);
-                  }}
-                  onBlur={() => {
-                    if (isDirty) {
-                      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
-                      setIsDirty(false);
-                    }
-                  }}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    className={`w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                      fieldLoading.includes('school') ? 'pl-8' : ''
+                    }`}
+                    value={school}
+                    onChange={(e) => {
+                      setSchool(e.target.value);
+                      setIsDirty(true);
+                    }}
+                    onBlur={() => {
+                      if (isDirty) {
+                        setFieldLoading(['school']);
+                        saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                        setIsDirty(false);
+                        setTimeout(() => setFieldLoading([]), 500);
+                      }
+                    }}
+                  />
+                  {fieldLoading.includes('school') && (
+                    <div className="absolute left-3 top-2.5">
+                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent border-r-transparent animate-spin rounded-full border-l-blue-500 border-b-blue-500"></div>
+                    </div>
+                  )}
+                </div>
               </label>
 
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-300">Course</span>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={course}
-                  onChange={(e) => {
-                    setCourse(e.target.value);
-                    setIsDirty(true);
-                  }}
-                  onBlur={() => {
-                    if (isDirty) {
-                      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
-                      setIsDirty(false);
-                    }
-                  }}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    className={`w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                      fieldLoading.includes('course') ? 'pl-8' : ''
+                    }`}
+                    value={course}
+                    onChange={(e) => {
+                      setCourse(e.target.value);
+                      setIsDirty(true);
+                    }}
+                    onBlur={() => {
+                      if (isDirty) {
+                        setFieldLoading(['course']);
+                        saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                        setIsDirty(false);
+                        setTimeout(() => setFieldLoading([]), 500);
+                      }
+                    }}
+                  />
+                  {fieldLoading.includes('course') && (
+                    <div className="absolute left-3 top-2.5">
+                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent border-r-transparent animate-spin rounded-full border-l-blue-500 border-b-blue-500"></div>
+                    </div>
+                  )}
+                </div>
               </label>
 
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-300">Area of Assignment</span>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={area}
-                  onChange={(e) => {
-                    setArea(e.target.value);
-                    setIsDirty(true);
-                  }}
-                  onBlur={() => {
-                    if (isDirty) {
-                      saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
-                      setIsDirty(false);
-                    }
-                  }}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    className={`w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-white shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                      fieldLoading.includes('area') ? 'pl-8' : ''
+                    }`}
+                    value={area}
+                    onChange={(e) => {
+                      setArea(e.target.value);
+                      setIsDirty(true);
+                    }}
+                    onBlur={() => {
+                      if (isDirty) {
+                        setFieldLoading(['area']);
+                        saveToFirebase(year, month, entries, { personName, course, school, area, requiredHours });
+                        setIsDirty(false);
+                        setTimeout(() => setFieldLoading([]), 500);
+                      }
+                    }}
+                  />
+                  {fieldLoading.includes('area') && (
+                    <div className="absolute left-3 top-2.5">
+                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent border-r-transparent animate-spin rounded-full border-l-blue-500 border-b-blue-500"></div>
+                    </div>
+                  )}
+                </div>
               </label>
             </div>
 
@@ -544,6 +824,16 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-4">
+              {/* Saved Indicator */}
+              {showSaved && (
+                <div className="flex items-center gap-2 rounded-lg border border-green-500 bg-green-600/20 px-4 py-2">
+                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-sm text-green-400 font-medium">Saved!</span>
+                </div>
+              )}
+
               {/* Firebase Status Indicator */}
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${
@@ -560,7 +850,6 @@ export default function Home() {
                 </span>
               </div>
 
-
               <div className="flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-4 py-2">
                 <span className="text-sm text-slate-400">Monthly Total:</span>
                 <span className="text-lg font-bold text-white">{formatMinutesToHM(monthlyTotalMinutes)}</span>
@@ -570,8 +859,18 @@ export default function Home() {
         </div>
 
         {/* Data Table */}
-        <div className="overflow-hidden rounded-xl border border-white/20 bg-black shadow-sm">
-          <div className="overflow-x-auto">
+        <div className="overflow-hidden rounded-xl border border-white/20 bg-black shadow-sm relative">
+          {/* Loading Overlay */}
+          {fieldLoading.includes('all') && (
+            <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-10">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent border-r-transparent animate-spin rounded-full border-l-blue-500 border-b-blue-500"></div>
+                <span className="text-white text-sm font-medium">Loading time entries...</span>
+              </div>
+            </div>
+          )}
+          
+          <div className={`overflow-x-auto ${fieldLoading.includes('all') ? 'opacity-50' : ''}`}>
             <table className="w-full text-left text-sm">
               <thead className="border-b border-white/20 bg-slate-900">
                 <tr>
@@ -590,37 +889,73 @@ export default function Home() {
 
                     <td className="px-6 py-3 text-center">
                       <div className="inline-flex items-center gap-2 rounded-md bg-slate-800 p-1 ring-1 ring-slate-700">
-                        <input
-                          type="time"
-                          value={e.morningIn}
-                          onChange={(ev) => updateEntry(i, "morningIn", ev.target.value)}
-                          className="w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0"
-                        />
+                        <div className="relative">
+                          <input
+                            type="time"
+                            value={e.morningIn}
+                            onChange={(ev) => updateEntry(i, "morningIn", ev.target.value)}
+                            className={`w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0 ${
+                              fieldLoading.includes(`${i}-morningIn`) ? 'text-blue-400' : ''
+                            }`}
+                          />
+                          {fieldLoading.includes(`${i}-morningIn`) && (
+                            <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                              <div className="w-3 h-3 border border-blue-400 border-t-transparent border-r-transparent animate-spin rounded-full border-l-blue-400 border-b-blue-400"></div>
+                            </div>
+                          )}
+                        </div>
                         <span className="text-slate-400">-</span>
-                        <input
-                          type="time"
-                          value={e.morningOut}
-                          onChange={(ev) => updateEntry(i, "morningOut", ev.target.value)}
-                          className="w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0"
-                        />
+                        <div className="relative">
+                          <input
+                            type="time"
+                            value={e.morningOut}
+                            onChange={(ev) => updateEntry(i, "morningOut", ev.target.value)}
+                            className={`w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0 ${
+                              fieldLoading.includes(`${i}-morningOut`) ? 'text-blue-400' : ''
+                            }`}
+                          />
+                          {fieldLoading.includes(`${i}-morningOut`) && (
+                            <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                              <div className="w-3 h-3 border border-blue-400 border-t-transparent border-r-transparent animate-spin rounded-full border-l-blue-400 border-b-blue-400"></div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
 
                     <td className="px-6 py-3 text-center">
                       <div className="inline-flex items-center gap-2 rounded-md bg-slate-800 p-1 ring-1 ring-slate-700">
-                        <input
-                          type="time"
-                          value={e.afternoonIn}
-                          onChange={(ev) => updateEntry(i, "afternoonIn", ev.target.value)}
-                          className="w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0"
-                        />
+                        <div className="relative">
+                          <input
+                            type="time"
+                            value={e.afternoonIn}
+                            onChange={(ev) => updateEntry(i, "afternoonIn", ev.target.value)}
+                            className={`w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0 ${
+                              fieldLoading.includes(`${i}-afternoonIn`) ? 'text-blue-400' : ''
+                            }`}
+                          />
+                          {fieldLoading.includes(`${i}-afternoonIn`) && (
+                            <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                              <div className="w-3 h-3 border border-blue-400 border-t-transparent border-r-transparent animate-spin rounded-full border-l-blue-400 border-b-blue-400"></div>
+                            </div>
+                          )}
+                        </div>
                         <span className="text-slate-400">-</span>
-                        <input
-                          type="time"
-                          value={e.afternoonOut}
-                          onChange={(ev) => updateEntry(i, "afternoonOut", ev.target.value)}
-                          className="w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0"
-                        />
+                        <div className="relative">
+                          <input
+                            type="time"
+                            value={e.afternoonOut}
+                            onChange={(ev) => updateEntry(i, "afternoonOut", ev.target.value)}
+                            className={`w-24 border-0 bg-transparent p-0 text-center text-sm text-white focus:ring-0 ${
+                              fieldLoading.includes(`${i}-afternoonOut`) ? 'text-blue-400' : ''
+                            }`}
+                          />
+                          {fieldLoading.includes(`${i}-afternoonOut`) && (
+                            <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                              <div className="w-3 h-3 border border-blue-400 border-t-transparent border-r-transparent animate-spin rounded-full border-l-blue-400 border-b-blue-400"></div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
 
