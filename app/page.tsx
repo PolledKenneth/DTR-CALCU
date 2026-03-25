@@ -652,8 +652,18 @@ export default function Home() {
                     }`}
                     value={personName}
                     onChange={(e) => {
-                      setPersonName(e.target.value);
+                      const newName = e.target.value;
+                      setPersonName(newName);
                       setIsDirty(true);
+                      // Clear entries if name is empty
+                      if (!newName.trim()) {
+                        const emptyEntries = getEmptyMonthEntries(year, month);
+                        setEntries(emptyEntries);
+                        setCourse("");
+                        setSchool("");
+                        setArea("");
+                        setRequiredHours("");
+                      }
                     }}
                     onBlur={() => {
                       if (isDirty) {
