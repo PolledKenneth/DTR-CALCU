@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { saveDTRData, getDTRData, getAllDTRData, type DTRData } from "../lib/firebase-service";
 import { db } from "../lib/firebase";
+import * as XLSX from "xlsx";
 
 type DayEntry = {
   date: string;
@@ -60,7 +61,6 @@ function formatDateWithDay(dateStr: string) {
   }
 }
 
-// ✅ NEW: convert decimal hours → hrs & mins
 function formatHoursToHM(hours: number) {
   const totalMinutes = Math.round(hours * 60);
   const h = Math.floor(totalMinutes / 60);
@@ -73,7 +73,6 @@ function formatHoursToHM(hours: number) {
   return `${h} hrs & ${m} mins`;
 }
 
-// New: format integer minutes to string
 function formatMinutesToHM(totalMinutes: number) {
   const mTotal = Math.round(totalMinutes);
   const h = Math.floor(mTotal / 60);
@@ -90,10 +89,9 @@ export default function Home() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
-  const [userId, setUserId] = useState<string>(""); // Firebase user ID
+  const [userId, setUserId] = useState<string>(""); 
   const userIdRef = useRef(userId);
   
-  // Keep userIdRef in sync
   useEffect(() => {
     userIdRef.current = userId;
     console.log("🆔 userId updated:", userId);
@@ -107,10 +105,7 @@ export default function Home() {
     return initialEntries;
   });
 
-  // Track the last saved entries to prevent duplicate saves and false triggers
   const lastSavedEntriesRef = useRef<DayEntry[]>(JSON.parse(JSON.stringify(getEmptyMonthEntries(year, month))));
-  
-  // Wrapper to track all setEntries calls
   const setEntriesTracked = useCallback((newEntriesOrFn: DayEntry[] | ((prev: DayEntry[]) => DayEntry[])) => {
     console.log("🔄 setEntries called");
     if (typeof newEntriesOrFn === 'function') {
@@ -136,14 +131,11 @@ export default function Home() {
     }
   }, []);
 
-  // Debouncing for saves
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const isLoadingRef = useRef(false);
   const [fieldLoading, setFieldLoading] = useState<string[]>([]);
   const [showSaved, setShowSaved] = useState(false);
-
-  // Debounced save function
   const debouncedSave = useCallback((year: number, month: number, entries: DayEntry[], meta: any) => {
     console.log("⏳ debouncedSave called, clearing old timeout and setting new one");
     if (saveTimeoutRef.current) {
@@ -154,18 +146,15 @@ export default function Home() {
       console.log("⏰ Timeout fired, calling saveToFirebase");
       saveToFirebase(year, month, entries, meta);
       setIsDirty(false);
-    }, 1000); // Wait 1 second after user stops typing
+    }, 1000); 
   }, []);
 
-  // Header metadata state
   const [personName, setPersonName] = useState("");
   const [course, setCourse] = useState("");
   const [school, setSchool] = useState("");
   const [area, setArea] = useState("");
   const [requiredHours, setRequiredHours] = useState<number | "">("");
   const [firebaseStatus, setFirebaseStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-
-  // Initialize userId and personName from localStorage
   const [isPersonNameLoaded, setIsPersonNameLoaded] = useState(false);
   const [isInitialDataLoaded, setIsInitialDataLoaded] = useState(false);
   const loadAttemptedRef = useRef(false);
@@ -175,20 +164,17 @@ export default function Home() {
     if (storedUserId) {
       setUserId(storedUserId);
     } else {
-      // Generate a simple user ID for demo purposes
       const newUserId = "user_" + Date.now().toString(36);
       localStorage.setItem("dtr-user-id", newUserId);
       setUserId(newUserId);
     }
 
-    // Load the last used person name
     const storedPersonName = localStorage.getItem("dtr-last-person-name");
     if (storedPersonName) {
       console.log("📋 Loading stored person name:", storedPersonName);
       setPersonName(storedPersonName);
       setIsPersonNameLoaded(true);
       
-      // Also restore last viewed month/year for this person (CRITICAL FIX #2: convert 1-based to 0-based)
       const storedYear = localStorage.getItem(`dtr-last-year-${storedPersonName}`);
       const storedMonth = localStorage.getItem(`dtr-last-month-${storedPersonName}`);
       
@@ -629,6 +615,72 @@ export default function Home() {
     saveToFirebase(year, month, cleaned, { personName, course, school, area, requiredHours });
   }
 
+  function exportToExcel() {
+    const monthName = new Date(0, month).toLocaleString(undefined, { month: "long" });
+    
+    // Create a new workbook
+    const ws = XLSX.utils.aoa_to_sheet([]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "DTR");
+
+    // Prepare header data with summary at top
+    const headerRows: any[][] = [
+      ["DARPO-BENGUET INTERNS - DAILY TIME RECORD (DTR)"],
+      [],
+      ["PROGRESS SUMMARY"],
+      ["Required Hours", typeof requiredHours === "number" ? `${requiredHours} hrs` : "N/A"],
+      ["Total Rendered", formatMinutesToHM(monthlyTotalMinutes)],
+      ["Remaining", formatMinutesToHM(remainFrom486Minutes)],
+      [],
+      ["PERSONAL INFORMATION"],
+      ["Period", `${monthName} ${year}`],
+      ["Name", personName],
+      ["School", school],
+      ["Course", course],
+      ["Area of Assignment", area],
+      [],
+      ["DAILY TIME ENTRIES"],
+      ["Date", "Morning In", "Morning Out", "Afternoon In", "Afternoon Out", "Daily Total"],
+    ];
+
+    // Prepare data rows
+    const dataRows: any[][] = entries.map((entry, idx) => [
+      entry.date,
+      entry.morningIn,
+      entry.morningOut,
+      entry.afternoonIn,
+      entry.afternoonOut,
+      formatMinutesToHM(dailyTotalsMinutes[idx]),
+    ]);
+
+    // Combine all data
+    const allRows = [...headerRows, ...dataRows];
+
+    // Create new sheet with all data
+    const finalWs = XLSX.utils.aoa_to_sheet(allRows);
+
+    // Set column widths
+    finalWs["!cols"] = [
+      { wch: 15 },  // Date
+      { wch: 12 },  // Morning In
+      { wch: 12 },  // Morning Out
+      { wch: 12 },  // Afternoon In
+      { wch: 12 },  // Afternoon Out
+      { wch: 18 },  // Daily Total
+    ];
+
+    // Clear previous sheet and add new one
+    wb.SheetNames = ["DTR"];
+    wb.Sheets["DTR"] = finalWs;
+
+    // Generate filename
+    const filename = `DTR_${personName || "Report"}_${monthName}_${year}.xlsx`;
+
+    // Save the file
+    XLSX.writeFile(wb, filename);
+    console.log("📊 Excel file exported:", filename);
+  }
+
   return (
     <div className="min-h-screen bg-black p-6 font-sans text-white selection:bg-slate-700">
       <div className="mx-auto max-w-5xl space-y-8">
@@ -831,35 +883,16 @@ export default function Home() {
               >
                 Clear Month
               </button>
+              <button
+                onClick={exportToExcel}
+                className="rounded-md border border-green-500 bg-green-600/20 px-3 py-2 text-sm text-green-300 hover:bg-green-500/25"
+                type="button"
+              >
+                Export to Excel
+              </button>
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Saved Indicator */}
-              {showSaved && (
-                <div className="flex items-center gap-2 rounded-lg border border-green-500 bg-green-600/20 px-4 py-2">
-                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span className="text-sm text-green-400 font-medium">Saved!</span>
-                </div>
-              )}
-
-              {/* Firebase Status Indicator */}
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${
-                  firebaseStatus === 'saving' ? 'bg-yellow-400 animate-pulse' :
-                  firebaseStatus === 'saved' ? 'bg-green-400' :
-                  firebaseStatus === 'error' ? 'bg-red-400' :
-                  'bg-gray-600'
-                }`} />
-                <span className="text-xs text-slate-400">
-                  {firebaseStatus === 'saving' ? 'Saving to cloud...' :
-                   firebaseStatus === 'saved' ? 'Saved to cloud' :
-                   firebaseStatus === 'error' ? 'Save failed' :
-                   'Ready'}
-                </span>
-              </div>
-
               <div className="flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-4 py-2">
                 <span className="text-sm text-slate-400">Monthly Total:</span>
                 <span className="text-lg font-bold text-white">{formatMinutesToHM(monthlyTotalMinutes)}</span>
@@ -977,6 +1010,22 @@ export default function Home() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Fixed Bottom Right Status Notification */}
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-white/20 bg-slate-900/90 px-4 py-3 shadow-lg backdrop-blur-sm">
+          <div className={`w-3 h-3 rounded-full ${
+            firebaseStatus === 'saving' ? 'bg-yellow-400 animate-pulse' :
+            firebaseStatus === 'saved' ? 'bg-green-400' :
+            firebaseStatus === 'error' ? 'bg-red-400' :
+            'bg-gray-600'
+          }`} />
+          <span className="text-sm font-medium text-slate-300">
+            {firebaseStatus === 'saving' ? 'Saving to cloud...' :
+             firebaseStatus === 'saved' ? 'Saved to cloud' :
+             firebaseStatus === 'error' ? 'Save failed' :
+             'Ready'}
+          </span>
         </div>
       </div>
     </div>
